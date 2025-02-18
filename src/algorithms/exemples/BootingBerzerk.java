@@ -2,9 +2,9 @@
  * Simovies - Eurobot 2015 Robomovies Simulator.
  * Copyright (C) 2014 <Binh-Minh.Bui-Xuan@ens-lyon.org>.
  * GPL version>=3 <http://www.gnu.org/licenses/>.
- * $Id: algorithms/HighwayFugitive.java 2014-10-28 buixuan.
+ * $Id: algorithms/BootingBerzerk.java 2014-11-03 buixuan.
  * ******************************************************/
-package algorithms;
+package algorithms.exemples;
 
 import java.util.ArrayList;
 
@@ -13,45 +13,59 @@ import characteristics.Parameters;
 import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 
-public class HighwayFugitive extends Brain {
+public class BootingBerzerk extends Brain {
   //---PARAMETERS---//
   private static final double HEADINGPRECISION = 0.001;
 
   //---VARIABLES---//
-  private boolean turnTask,turnRight,moveTask,highway,back;
-  private double endTaskDirection,lastShot;
-  private int endTaskCounter;
-  private boolean firstMove;
+  private boolean turnTask,turnRight,moveTask,berzerk,back;
+  private double endTaskDirection,lastSeenDirection;
+  private int endTaskCounter,berzerkInerty;
+  private boolean firstMove,berzerkTurning;
 
   //---CONSTRUCTORS---//
-  public HighwayFugitive() { super(); }
+  public BootingBerzerk() { super(); }
 
   //---ABSTRACT-METHODS-IMPLEMENTATION---//
   public void activate() {
     turnTask=true;
     moveTask=false;
     firstMove=true;
-    highway=false;
+    berzerk=false;
+    berzerkInerty=0;
+    berzerkTurning=false;
     back=false;
     endTaskDirection=(Math.random()-0.5)*0.5*Math.PI;
     turnRight=(endTaskDirection>0);
     endTaskDirection+=getHeading();
-    lastShot=Math.random()*Math.PI*2;
+    lastSeenDirection=Math.random()*Math.PI*2;
     if (turnRight) stepTurn(Parameters.Direction.RIGHT);
     else stepTurn(Parameters.Direction.LEFT);
     sendLogMessage("Turning point. Waza!");
   }
   public void step() {
-    if (Math.random()<0.01) {
+    /*if (Math.random()<0.01 && !berzerk) {
       fire(Math.random()*Math.PI*2);
       return;
-    }
+    }*/
     ArrayList<IRadarResult> radarResults = detectRadar();
-    if (highway) {
-      if (endTaskCounter<0) {
+    if (berzerk) {
+      if (berzerkTurning) {
+        endTaskCounter--;
+        if (isHeading(endTaskDirection)) {
+          berzerkTurning=false;
+          move();
+          sendLogMessage("Moving a head. Waza!");
+        } else {
+          if (turnRight) stepTurn(Parameters.Direction.RIGHT);
+          else stepTurn(Parameters.Direction.LEFT);
+        }
+        return;
+      }
+      /*if (endTaskCounter<0) {
         turnTask=true;
         moveTask=false;
-        highway=false;
+        berzerk=false;
         endTaskDirection=(Math.random()-0.5)*2*Math.PI;
         turnRight=(endTaskDirection>0);
         endTaskDirection+=getHeading();
@@ -64,26 +78,69 @@ public class HighwayFugitive extends Brain {
           for (IRadarResult r : radarResults) {
             if (r.getObjectType()==IRadarResult.Types.OpponentMainBot) {
               fire(r.getObjectDirection());
-              lastShot=r.getObjectDirection();
+              lastSeenDirection=r.getObjectDirection();
               return;
             }
           }
-          fire(lastShot);
+          fire(lastSeenDirection);
           return;
         } else {
           if (back) moveBack(); else move();
         }
+      }*/
+      if (berzerkInerty>50) {
+        turnTask=true;
+        moveTask=false;
+        berzerk=false;
+        endTaskDirection=(Math.random()-0.5)*2*Math.PI;
+        turnRight=(endTaskDirection>0);
+        endTaskDirection+=getHeading();
+        if (turnRight) stepTurn(Parameters.Direction.RIGHT);
+        else stepTurn(Parameters.Direction.LEFT);
+        sendLogMessage("Turning point. Waza!");
+        return;
+      }
+      if (endTaskCounter<0) {
+        for (IRadarResult r : radarResults) {
+          if (r.getObjectType()==IRadarResult.Types.OpponentMainBot) {
+            fire(r.getObjectDirection());
+            lastSeenDirection=r.getObjectDirection();
+            berzerkInerty=0;
+            return;
+          }
+        }
+        fire(lastSeenDirection);
+        berzerkInerty++;
+        endTaskCounter=21;
+        return;
+      } else {
+        endTaskCounter--;
+        for (IRadarResult r : radarResults) {
+          if (r.getObjectType()==IRadarResult.Types.OpponentMainBot) {
+            lastSeenDirection=r.getObjectDirection();
+            berzerkInerty=0;
+            move();
+            return;
+          }
+        }
+        berzerkInerty++;
+        move();
       }
       return;
     }
     if (radarResults.size()!=0){
       for (IRadarResult r : radarResults) {
         if (r.getObjectType()==IRadarResult.Types.OpponentMainBot) {
-          highway=true;
+          berzerk=true;
           back=(Math.cos(getHeading()-r.getObjectDirection())>0);
-          endTaskCounter=400;
+          endTaskCounter=21;
           fire(r.getObjectDirection());
-          lastShot=r.getObjectDirection();
+          lastSeenDirection=r.getObjectDirection();
+          berzerkTurning=true;
+          endTaskDirection=lastSeenDirection;
+          double ref=endTaskDirection-getHeading();
+          if (ref<0) ref+=Math.PI*2;
+          turnRight=(ref>0 && ref<Math.PI);
           return;
         }
       }

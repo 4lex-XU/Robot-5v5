@@ -4,7 +4,7 @@
  * GPL version>=3 <http://www.gnu.org/licenses/>.
  * $Id: algorithms/RandomFire.java 2014-10-28 buixuan.
  * ******************************************************/
-package algorithms;
+package algorithms.exemples;
 
 import robotsimulator.Brain;
 import characteristics.Parameters;

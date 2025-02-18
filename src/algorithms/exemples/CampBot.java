@@ -4,7 +4,7 @@
  * GPL version>=3 <http://www.gnu.org/licenses/>.
  * $Id: algorithms/CampBot.java 2014-11-04 buixuan.
  * ******************************************************/
-package algorithms;
+package algorithms.exemples;
 
 import robotsimulator.Brain;
 import characteristics.IFrontSensorResult;
