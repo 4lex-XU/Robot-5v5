@@ -6,7 +6,7 @@ import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 
 public class Stage3 extends Brain {
-    private enum State { INIT, TURNING, GO_UP, GO_RIGHT, GO_DOWN, GO_LEFT, DEFAULT }
+    private enum State { INIT, TURNING, GO_UP, GO_RIGHT, GO_DOWN, GO_LEFT, SPIN, DEFAULT }
     private State state;
     private Parameters.Direction nextTurnDirection;
     private double targetHeading;
@@ -17,6 +17,9 @@ public class Stage3 extends Brain {
     private static final int ROCKY = 0x1EADDA;
     private static final int MARIO = 0x5EC0;
     private static final double ANGLEPRECISION = 0.04;
+    private static final double SOUTH_BORDER_Y = 3050; //il faut remplacer par la bonne valeur de height 
+    private static final double[] CHECKPOINTS = { SOUTH_BORDER_Y * 0.25, SOUTH_BORDER_Y * 0.5, SOUTH_BORDER_Y * 0.75 };
+    private boolean isSpinning;
     
     public Stage3() { 
         super();
@@ -41,9 +44,19 @@ public class Stage3 extends Brain {
 
         state = (whoAmI == ROCKY) ? State.INIT : State.DEFAULT;
         isMoving = false;
+        isSpinning = false;
     }
 
     public void step() {
+    	
+        if (isMoving && whoAmI == ROCKY){
+        	if (detectFront().getObjectType()!=IFrontSensorResult.Types.WALL) {
+	            myX+=Parameters.teamASecondaryBotSpeed*Math.cos(getHeading());
+	            myY+=Parameters.teamASecondaryBotSpeed*Math.sin(getHeading());
+	            isMoving=false;
+          }
+        }
+        
         if (whoAmI == MARIO) {
             defaultBehavior();
             return;
@@ -70,6 +83,7 @@ public class Stage3 extends Brain {
                 if (detectFront().getObjectType() == IFrontSensorResult.Types.WALL) {
                     setTurnState(Parameters.EAST, Parameters.Direction.RIGHT);
                 } else {
+                	isMoving = true;
                     move();
                 }
                 break;
@@ -78,6 +92,7 @@ public class Stage3 extends Brain {
                 if (detectFront().getObjectType() == IFrontSensorResult.Types.WALL) {
                     setTurnState(Parameters.SOUTH, Parameters.Direction.RIGHT);
                 } else {
+                	isMoving = true;
                     move();
                 }
                 break;
@@ -86,6 +101,7 @@ public class Stage3 extends Brain {
                 if (detectFront().getObjectType() == IFrontSensorResult.Types.WALL) {
                     setTurnState(Parameters.WEST, Parameters.Direction.RIGHT);
                 } else {
+                	isMoving = true;
                     move();
                 }
                 break;
@@ -94,7 +110,28 @@ public class Stage3 extends Brain {
                 if (detectFront().getObjectType() == IFrontSensorResult.Types.WALL) {
                     setTurnState(Parameters.NORTH, Parameters.Direction.RIGHT);
                 } else {
+                	isMoving = true;
                     move();
+                    checkForSpin();
+                }
+                break;
+            case SPIN:
+                if (!isSpinning) {
+                    isSpinning = true;
+                    isMoving = false;
+                    targetHeading = getHeading(); // Conserver l'orientation initiale
+                    nextTurnDirection = Parameters.Direction.RIGHT;
+                    state = State.TURNING;
+                } else {
+                    // Vérifier si une rotation complète a été effectuée
+                    if (isCompleteRotation()) {
+                        // La rotation est terminée
+                        isSpinning = false;
+                        setTurnState(Parameters.WEST, Parameters.Direction.RIGHT);
+                    } else {
+                        // Continuer la rotation
+                        stepTurn(Parameters.Direction.RIGHT);
+                    }
                 }
                 break;
 
@@ -102,6 +139,26 @@ public class Stage3 extends Brain {
                 move();
                 break;
         }
+    }
+    
+    private void checkForSpin() {
+        for (double checkpoint : CHECKPOINTS) {
+            if (Math.abs(myX - checkpoint) < 10.0) {
+                state = State.SPIN;
+                return;
+            }
+        }
+    }
+    
+    private boolean isCompleteRotation() {
+        double currentHeading = getHeading();
+        double initialHeading = targetHeading;
+        
+        // Calculer la différence angulaire
+        double angleDiff = normalize(currentHeading - initialHeading);
+        
+        // Une rotation complète fait 360 degrés (2*PI radians)
+        return angleDiff > (2 * Math.PI - ANGLEPRECISION);
     }
 
     private void setTurnState(double newHeading, Parameters.Direction turnDirection) {
@@ -111,8 +168,6 @@ public class Stage3 extends Brain {
     }
 
     private void updateStateAfterTurn() {
-        sendLogMessage("DEBUG: targetHeading = " + targetHeading + " | NORTH = " + Parameters.NORTH);
-
         if (isSameDirection(targetHeading, Parameters.EAST)) {
             sendLogMessage("Changement d'état: GO_RIGHT");
             state = State.GO_RIGHT;
@@ -126,19 +181,25 @@ public class Stage3 extends Brain {
             sendLogMessage("Changement d'état: GO_UP");
             state = State.GO_UP;
         } else {
-            sendLogMessage("⚠️ Problème: Aucune direction ne correspond !");
+        	double minDiff = Double.MAX_VALUE;
+            State newState = State.GO_UP;
+            
+            double[] directions = {Parameters.NORTH, Parameters.EAST, Parameters.SOUTH, Parameters.WEST};
+            State[] states = {State.GO_UP, State.GO_RIGHT, State.GO_DOWN, State.GO_LEFT};
+            
+            for (int i = 0; i < directions.length; i++) {
+                double diff = Math.abs(normalize(targetHeading) - normalize(directions[i]));
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    newState = states[i];
+                }
+            }
+            sendLogMessage("Direction la plus proche trouvée: " + newState);
+            state = newState;
         }
     }
 
-
-
     private void defaultBehavior() {
-        if (isMoving) {
-            myX += Parameters.teamASecondaryBotSpeed * Math.cos(getHeading());
-            myY += Parameters.teamASecondaryBotSpeed * Math.sin(getHeading());
-            isMoving = false;
-        }
-
         if (detectFront().getObjectType() != IFrontSensorResult.Types.WALL) {
             move();
             return;
