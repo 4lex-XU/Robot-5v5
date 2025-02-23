@@ -1,4 +1,4 @@
-package algorithms;
+package algorithms.exemples;
 
 import robotsimulator.Brain;
 import characteristics.Parameters;
