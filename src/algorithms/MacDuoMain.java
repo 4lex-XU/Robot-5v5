@@ -10,7 +10,7 @@ import characteristics.IFrontSensorResult.Types;
 import characteristics.Parameters;
 import robotsimulator.Brain;
 
-public class MacDuoMain extends Brain {
+public class MacDuoMain extends MacDuoBaseBot {
     private static final double ANGLEPRECISION = 0.1;
     
     // les ids des shooters
@@ -318,6 +318,10 @@ public class MacDuoMain extends Brain {
         
         // envoyer sa position 
 		broadcast("POS "+whoAmI+ " " +myX+" "+myY);
+	}
+	
+	private void sendPosition() {
+		broadcast("POS "+whoAmI+" "+myX+" "+myY);
 	}
 
 }

@@ -11,14 +11,17 @@ import characteristics.IRadarResult;
 import characteristics.Parameters;
 import robotsimulator.Brain;
 
-public class SecondaryMacDuo extends Brain{
+abstract class MacDuoBaseBot extends Brain {
+	
+}
+
+public class SecondaryMacDuo extends MacDuoBaseBot{
 
 	private static final double ANGLEPRECISION = 0.1;
     private static final String NBOT = "NBOT";
     private static final String SBOT = "SBOT";	
-    private static final int TOTAL_SHOOTERS = 3;
     
-    private enum State { RDV_POINT, TURNING, WAITING, MOVING, MOVINGBACK };
+    private enum State { RDV_POINT, WAITING, MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT };
 
     // points de rdv
     private static final double TARGET_X1 = 600; // TargetX2 - 300
@@ -34,8 +37,8 @@ public class SecondaryMacDuo extends Brain{
 	private boolean isMoving;
 	private double oldAngle;
 	
-	// Stocker la position des alliés
-	private Map<String, Double[]> allyPos = new HashMap<>();	
+	private Map<String, Double[]> allyPos = new HashMap<>();	// Stocker la position des alliés
+	private Map<String, Double[]> wreckPos = new HashMap<>();	// Stocker la position des débris
 	
 	//=========================================CORE=========================================	
 	public SecondaryMacDuo() {super();}
@@ -69,21 +72,24 @@ public class SecondaryMacDuo extends Brain{
 		
 		switch (state) {
 			case RDV_POINT :
-				moveToTarget();
+				double tX = (whoAmI == SBOT) ? TARGET_X2 : TARGET_X1;
+			    double tY = (whoAmI == SBOT) ? TARGET_Y2 : TARGET_Y1;
+				moveToTarget(tX, tY);
 				break;
 			case WAITING :
 				readMessages();
 				break;
 			case MOVING :
-				
 				readMessages();
 				myMove();
 				break;
-			case MOVINGBACK :
+			case MOVING_BACK :
 				moveBack();
 				break;
-			case TURNING :
+			case TURNING_LEFT :
 				myTurningTask();
+				break;
+			case TURNING_RIGHT:
 				break;
 		}
 	  
@@ -111,24 +117,19 @@ public class SecondaryMacDuo extends Brain{
 	
 	//=========================================ADDED=========================================
 	
-	private void moveToTarget() {
-	    double tX = (whoAmI == SBOT) ? TARGET_X2 : TARGET_X1;
-	    double tY = (whoAmI == SBOT) ? TARGET_Y2 : TARGET_Y1;
-
+	// se déplace au point de rdv donné 
+	private void moveToTarget(double tX, double tY) {
 	    double dx = tX - myX;
 	    double dy = tY - myY;
 	    double angleToTarget = Math.atan2(dy, dx);
 
 	    if (!isSameDirection(getHeading(), angleToTarget)) {
-	        //  Étape 1 : Tourner progressivement vers la cible
 	        turnTo(angleToTarget);
 	        sendLogMessage("Rotation vers la cible...");
 	    } else {
-	        //  Étape 2 : Avancer quand l'angle est correct
 	        sendLogMessage("Angle correct, déplacement...");
 	        myMove();	       
 	    }
-
 	    if (Math.abs(myX - tX) < 5 && Math.abs(myY - tY) < 5) {
 	        sendLogMessage("Position cible atteinte !");
 	        state = state.WAITING;
@@ -136,21 +137,18 @@ public class SecondaryMacDuo extends Brain{
 	}
 	
 	private void myMove() {
-		
 		switch (detectFront().getObjectType()) {
 			case NOTHING :
-				move(); // Avance normalement
+				move(); 
 	            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
 	            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
 	            break;
 	      
 	        default:
-	            state = State.TURNING;
-	            oldAngle=getHeading();
+	            state = State.TURNING_LEFT;
+	            oldAngle = getHeading();
 	            break;
-	    }
-        
-        // envoyer sa position 
+	    }        
 		broadcast("POS "+whoAmI+ " " +myX+" "+myY);
 	}
 	
@@ -162,7 +160,6 @@ public class SecondaryMacDuo extends Brain{
 	            o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
 	            
 	            // Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
-	    		
 	            double enemyX=myX+o.getObjectDistance()*Math.cos(o.getObjectDirection());
 	            double enemyY=myY+o.getObjectDistance()*Math.sin(o.getObjectDirection());
 	            String message = "ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY;
@@ -172,7 +169,6 @@ public class SecondaryMacDuo extends Brain{
 	    }
 	}
 
-	
 	// En state TURNING
 	// Tourne à gauche
 	private void myTurningTask() {
@@ -251,6 +247,10 @@ public class SecondaryMacDuo extends Brain{
 	    }
 	}
 	
+	private void sendPosition() {
+		broadcast("POS "+whoAmI+" "+myX+" "+myY);
+	}
+	
 	// Interprète les messages des alliés
 	private void readMessages() {
         ArrayList<String> messages = fetchAllMessages();
@@ -271,4 +271,6 @@ public class SecondaryMacDuo extends Brain{
             }
         }
     }
+	
+	
 }
