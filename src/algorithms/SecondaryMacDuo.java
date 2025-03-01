@@ -1,6 +1,9 @@
 package algorithms;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import characteristics.IFrontSensorResult;
@@ -14,11 +17,9 @@ public class SecondaryMacDuo extends Brain{
     private static final String NBOT = "NBOT";
     private static final String SBOT = "SBOT";	
     private static final int TOTAL_SHOOTERS = 3;
-
-    private static final int PHASE1_RDV_POINT = 1;
-    private static final int PHASE2_WAITING = 21;
-    private static final int PHASE2_MOVING = 22;
     
+    private enum State { RDV_POINT, TURNING, WAITING, MOVING, MOVINGBACK };
+
     // points de rdv
     private static final double TARGET_X1 = 600; // TargetX2 - 300
     private static final double TARGET_Y1 = 840; // TargetY2 - 660
@@ -27,14 +28,16 @@ public class SecondaryMacDuo extends Brain{
     private static final double TARGET_Y2 = 1500;
     
     //---VARIABLES---//
-    private int state;
+    private State state;
 	private String whoAmI;
 	private double myX,myY;
 	private boolean isMoving;
+	private double oldAngle;
 	
-	// Stocker les tireurs qui ont envoyé "READY"
-	private Set<String> readyShooters = new HashSet<>();
+	// Stocker la position des alliés
+	private Map<String, Double[]> allyPos = new HashMap<>();	
 	
+	//=========================================CORE=========================================	
 	public SecondaryMacDuo() {super();}
 
 	@Override
@@ -56,40 +59,57 @@ public class SecondaryMacDuo extends Brain{
 		
 	    //INIT
 	    isMoving=true;
-	    state = PHASE1_RDV_POINT;
+	    state = State.RDV_POINT;
+	    oldAngle = getHeading();
 	}
 
 	@Override
 	public void step() {
 		detectAndBroadCast();
 		
-		if(state == PHASE1_RDV_POINT) {
-			moveToTarget();
-			return;
+		switch (state) {
+			case RDV_POINT :
+				moveToTarget();
+				break;
+			case WAITING :
+				readMessages();
+				break;
+			case MOVING :
+				
+				readMessages();
+				myMove();
+				break;
+			case MOVINGBACK :
+				moveBack();
+				break;
+			case TURNING :
+				myTurningTask();
+				break;
 		}
-
-		/*
-	    int shooterReadyCount = readyShooters.size();
-
-	    // Détection des obstacles devant
-		if (detectFront().getObjectType() != IFrontSensorResult.Types.NOTHING) {
-	        isMoving = false;
-	        return; 
-	    }
-
-	    // Déplacement vers la droite
-		if (isMoving) {
-	        move();
-	        myX += Parameters.teamASecondaryBotSpeed;
-	        //sendLogMessage("Tous les tireurs sont prêts, j'avance !");
-	    } else {
-	        //sendLogMessage("En attente des tireurs...");
-	    }*/
+	  
 	}
 	
-	private void phase1() {
+	//=========================================BASE=========================================
+	
+		protected boolean isSameDirection(double dir1, double dir2) {
+		    double diff = normalize(dir1 - dir2);
+		    if (diff > Math.PI) diff -= 2 * Math.PI;
+		    if (diff < -Math.PI) diff += 2 * Math.PI;
+		    return Math.abs(diff) < ANGLEPRECISION;
+		}
 		
-	}
+		protected double normalize(double dir){
+		    double res=dir;
+		    while (res<0) res+=2*Math.PI;
+		    while (res>=2*Math.PI) res-=2*Math.PI;
+		    return res;
+		}
+		
+		protected boolean isHeading(double dir){
+			return Math.abs(Math.sin(getHeading()-dir))<ANGLEPRECISION;
+		}
+	
+	//=========================================ADDED=========================================
 	
 	private void moveToTarget() {
 	    double tX = (whoAmI == SBOT) ? TARGET_X2 : TARGET_X1;
@@ -106,33 +126,34 @@ public class SecondaryMacDuo extends Brain{
 	    } else {
 	        //  Étape 2 : Avancer quand l'angle est correct
 	        sendLogMessage("Angle correct, déplacement...");
-	        move();
-	        
-	        // Mise à jour des coordonnées
-	        myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
-	        myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	        myMove();	       
 	    }
 
 	    if (Math.abs(myX - tX) < 5 && Math.abs(myY - tY) < 5) {
 	        sendLogMessage("Position cible atteinte !");
-	        state = PHASE2_WAITING;
+	        state = state.WAITING;
 	    }
 	}
 	
-	private void checkReadyShooters() {
-		for (String msg : fetchAllMessages()) {
-	        if (msg.startsWith("READY")) { 
-	            String[] parts = msg.split(" ");
-	            if (parts.length > 1) {
-	                String shooterID = parts[1];  // L'identifiant du tireur
-
-	                if (!readyShooters.contains(shooterID)) {
-	                    readyShooters.add(shooterID);  // Ajouter une seule fois
-	                }
-	            }
-	        }
+	private void myMove() {
+		
+		switch (detectFront().getObjectType()) {
+			case NOTHING :
+				move(); // Avance normalement
+	            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	            break;
+	      
+	        default:
+	            state = State.TURNING;
+	            oldAngle=getHeading();
+	            break;
 	    }
+        
+        // envoyer sa position 
+		broadcast("POS "+whoAmI+ " " +myX+" "+myY);
 	}
+	
 	
 	private void detectAndBroadCast() {
 		// Détection des ennemis et envoi d'infos
@@ -140,51 +161,114 @@ public class SecondaryMacDuo extends Brain{
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || 
 	            o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
 	            
-	            // Transmettre la position des ennemis : ENEMY dir dist type myX myY
-	            String message = "ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + myX + " " + myY;
+	            // Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
+	    		
+	            double enemyX=myX+o.getObjectDistance()*Math.cos(o.getObjectDirection());
+	            double enemyY=myY+o.getObjectDistance()*Math.sin(o.getObjectDirection());
+	            String message = "ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY;
 	            broadcast(message);
 	            sendLogMessage(message);
 	        }
 	    }
 	}
-	
-	private boolean isSameDirection(double dir1, double dir2) {
-	    double diff = normalize(dir1 - dir2);
 
-	    // Ajuster pour prendre l'angle le plus court
-	    if (diff > Math.PI) diff -= 2 * Math.PI;
-	    if (diff < -Math.PI) diff += 2 * Math.PI;
+	
+	// En state TURNING
+	// Tourne à gauche
+	private void myTurningTask() {
+		    if (!isSameDirection(getHeading(),oldAngle+Parameters.RIGHTTURNFULLANGLE)) {
+		            stepTurn(Parameters.Direction.LEFT);
+		    } else {
+		    	System.out.println("trying to move");
+		        state = State.MOVING;
+		        myMove();
+		    }
+	}
+	/*
+	private void myMove() {
+    IFrontSensorResult frontObject = detectFront();
+    
+    switch (frontObject.getObjectType()) {
+        case WALL:
+            moveBack();
+            myX -= Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY -= Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            turnTo(getHeading() + Math.PI / 2); // Contourne en tournant 90°
+            break;
+            
+        case OpponentMainBot:
+        case OpponentSecondaryBot:
+            moveBack();
+            myX -= Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY -= Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            turnTo(getHeading() + Math.PI / 4); // Évite en tournant de 45°
+            break;
+            
+        case BULLET:
+            turnTo(getHeading() + Math.PI / 2); // Tourne à 90° pour esquiver
+            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            break;
+            
+        case Wreck:
+            turnTo(getHeading() + Math.PI / 3); // Tourne de 60° pour contourner
+            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            break;
 
-	    return Math.abs(diff) < ANGLEPRECISION;
-	}
+        case TeamMainBot:
+        case TeamSecondaryBot:
+            turnTo(getHeading() + Math.PI / 6); // Ajuste légèrement la direction
+            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            break;
+            
+        default:
+            move(); // Avance normalement
+            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+            break;
+    }
+
+    // 📡 Mise à jour et transmission de la position
+    broadcast("POS " + whoAmI + " " + myX + " " + myY);
+}
+	 */
 	
-	private double normalize(double dir){
-	    double res=dir;
-	    while (res<0) res+=2*Math.PI;
-	    while (res>=2*Math.PI) res-=2*Math.PI;
-	    return res;
-	}
-	
-	private boolean isHeading(double dir){
-		return Math.abs(Math.sin(getHeading()-dir))<ANGLEPRECISION;
-	}
-	
+	// StepTurn Gauche ou Droite, selon un angle cible
 	protected void turnTo(double targetAngle) {
 	    double currentAngle = getHeading();
 	    double diff = normalize(targetAngle - currentAngle);
-
 	    if (diff > Math.PI) {
-	        diff -= 2 * Math.PI;  // Tourner dans l’autre sens
+	        diff -= 2 * Math.PI;  
 	    } else if (diff < -Math.PI) {
-	        diff += 2 * Math.PI;  // Tourner dans l’autre sens
+	        diff += 2 * Math.PI; 
 	    }
-
-	    // 🏁 Tourner dans la bonne direction
 	    if (diff > ANGLEPRECISION) {
 	        stepTurn(Parameters.Direction.RIGHT);
 	    } else if (diff < -ANGLEPRECISION) {
 	        stepTurn(Parameters.Direction.LEFT);
 	    }
 	}
-
+	
+	// Interprète les messages des alliés
+	private void readMessages() {
+        ArrayList<String> messages = fetchAllMessages();
+        for (String msg : messages) {
+            String[] parts = msg.split(" ");
+            switch (parts[0]) {
+	            case "POS" :
+	        	    state = state.MOVING;
+	            	double targetX = Double.parseDouble(parts[2]);
+	                double targetY = Double.parseDouble(parts[3]);
+	            	allyPos.put(parts[1], new Double[]{targetX, targetY});
+	            	double distance = Math.sqrt(Math.pow(targetX - myX, 2) + Math.pow(targetY - myY, 2));
+	        	    if (distance > 800 && parts[1] != "NBOT" && parts[1] != "SBOT") {
+	        	        state = state.WAITING;
+	        	    }
+	            	break;
+                
+            }
+        }
+    }
 }

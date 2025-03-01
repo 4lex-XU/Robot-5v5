@@ -3,6 +3,8 @@ package algorithms;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+
+import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.IFrontSensorResult.Types;
 import characteristics.Parameters;
@@ -32,7 +34,11 @@ public class MacDuoMain extends Brain {
     private boolean isTeamA = false;
     private double targetHeading;
     private double enemyX, enemyY;
-    private Map<String, Double[]> scouts = new HashMap<>();
+	// Stocker la position des alliés
+ 	private Map<String, Double[]> allyPos = new HashMap<>();
+ 	
+ 	
+	//=========================================CORE=========================================	
 
     @Override
     public void activate() {
@@ -77,6 +83,7 @@ public class MacDuoMain extends Brain {
     
     @Override
     public void step() {
+    	detectObstacleAndMove();
         switch (state) {
             case RDV_POINT:
                 moveToTarget();
@@ -101,20 +108,41 @@ public class MacDuoMain extends Brain {
                 break;
         }
     }
+    
+	//=========================================BASE=========================================	
+
+    private boolean isSameDirection(double dir1, double dir2){
+        return Math.abs(normalize(dir1)-normalize(dir2))<ANGLEPRECISION;
+      }
+    
+    private double normalize(double dir){
+        double res=dir;
+        while (res<0) res+=2*Math.PI;
+        while (res>=2*Math.PI) res-=2*Math.PI;
+        return res;
+      }
+    
+    protected boolean isHeading(double dir){
+        return Math.abs(Math.sin(getHeading()-dir))<ANGLEPRECISION;
+    }
+    
+	//=========================================ADDED=========================================	
 
     private void readMessages() {
         ArrayList<String> messages = fetchAllMessages();
         for (String msg : messages) {
             String[] parts = msg.split(" ");
             switch (parts[0]) {
+	            case "POS" :
+	            	double targetX = Double.parseDouble(parts[2]);
+	                double targetY = Double.parseDouble(parts[3]);
+	            	allyPos.put(parts[1], new Double[]{targetX, targetY});
+	            	break;
                 case "ENEMY":
                 	sendLogMessage("enemy message received");
                     handleEnemyMessage(parts);
                     break;
-                case "SCOUT_A":
-                	handleScoutMessage(parts);
-                	break;
-                case "SCOUT_B":
+             
                 case "SCOUT_DOWN_A":
                 case "SCOUT_DOWN_B":
                     //handleScoutMessage(parts);
@@ -126,17 +154,11 @@ public class MacDuoMain extends Brain {
     private void handleEnemyMessage(String[] parts) {
         double directionScoutEnemy = Math.toRadians(Double.parseDouble(parts[1]));
         double distanceScoutEnemy = Double.parseDouble(parts[2]);
-        double scoutX = Double.parseDouble(parts[4]);
-        double scoutY = Double.parseDouble(parts[5]);
-
-        double enemyX = scoutX + distanceScoutEnemy * Math.cos(directionScoutEnemy);
-        double enemyY = scoutY + distanceScoutEnemy * Math.sin(directionScoutEnemy);
+        double enemyX = Double.parseDouble(parts[4]);
+        double enemyY = Double.parseDouble(parts[5]);
 
         double dx = enemyX - myX;
         double dy = enemyY - myY;
-        double angleToEnemy = Math.toDegrees(Math.atan2(dy, dx)); 
-        double myHeading = getHeading(); 
-        double relativeAngle = normalize(angleToEnemy - myHeading);
 
         double distanceEnemyMe = Math.sqrt(dx * dx + dy * dy);
         sendLogMessage("distanceEnemyMe " + distanceEnemyMe);
@@ -163,13 +185,19 @@ public class MacDuoMain extends Brain {
         double dy = enemyY - myY;
         double angleToEnemy = Math.toDegrees(Math.atan2(dy, dx)); 
 
+        tryToFire();
+/*
         if (!isSameDirection(getHeading(), angleToEnemy)) {
+        	System.out.println("cherche angle ");
+
             targetHeading = angleToEnemy;
             state = TURNING;
         } else {
-            tryToFire(angleToEnemy);
+        	System.out.println("essaie de tirer");
+            //tryToFire(angleToEnemy);
+        	shootAtEnemy();
             state = WAITING;
-        }
+        }*/
     }
     
     private void handleScoutDownMessage(String[] parts) {
@@ -179,14 +207,6 @@ public class MacDuoMain extends Brain {
 //        }
     }
     
-    private void handleScoutMessage(String[] parts) {
-        String scoutType = parts[0];
-        double targetX = Double.parseDouble(parts[1]);
-        double targetY = Double.parseDouble(parts[2]);
-        scouts.put(scoutType, new Double[]{targetX, targetY});
-	    double distance = Math.sqrt(Math.pow(targetX - myX, 2) + Math.pow(targetY - myY, 2));
-	    if(distance > 200) moveToTarget(); 
-    }
     
     private void handleChasing() {
         // Implémenter le comportement de poursuite
@@ -196,14 +216,13 @@ public class MacDuoMain extends Brain {
         state = MOVING;
     }
     
-    private void tryToFire(double preciseDirection) {
-//        if (detectFront().getObjectType().equals(Types.TeamMainBot) || detectFront().getObjectType().equals(Types.TeamSecondaryBot)) {
-//            return;
-//        }
-//        else {
-            fire(preciseDirection);
-            sendLogMessage("Tir déclenché dans la direction : " + Math.toDegrees(preciseDirection));
-        //}
+    private void tryToFire() {
+        if (detectFront().getObjectType().equals(Types.TeamMainBot) || detectFront().getObjectType().equals(Types.TeamSecondaryBot)) {
+            return;
+        }
+        else {
+        	shootAtEnemy();
+        }
     }
     
     private void moveToTarget() {
@@ -216,9 +235,7 @@ public class MacDuoMain extends Brain {
 //        	targetHeading = angleToTarget;
             turnTo(angleToTarget);
         } else {
-            move();
-            myX += Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
-            myY += Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
+            myMove();
         }
 
 	    double distance = Math.sqrt(Math.pow(targetX - myX, 2) + Math.pow(targetY - myY, 2));
@@ -228,20 +245,7 @@ public class MacDuoMain extends Brain {
 	    }
     }
     
-    private boolean isSameDirection(double dir1, double dir2){
-        return Math.abs(normalize(dir1)-normalize(dir2))<ANGLEPRECISION;
-      }
-    
-    private double normalize(double dir){
-        double res=dir;
-        while (res<0) res+=2*Math.PI;
-        while (res>=2*Math.PI) res-=2*Math.PI;
-        return res;
-      }
-    
-    protected boolean isHeading(double dir){
-        return Math.abs(Math.sin(getHeading()-dir))<ANGLEPRECISION;
-    }
+
     
     protected void turnTo(double targetAngle) {
         double currentAngle = getHeading();
@@ -261,5 +265,59 @@ public class MacDuoMain extends Brain {
             }
         }
     }
+    
+    private void shootAtEnemy() {
+	    for (String msg : fetchAllMessages()) {
+	        if (msg.startsWith("ENEMY")) {
+	            String[] data = msg.split(" ");
+	            double enemyDir = Double.parseDouble(data[1]); // Direction de l'ennemi depuis l'éclaireur
+	            double enemyDist = Double.parseDouble(data[2]); // Distance depuis l'éclaireur
+	            double enemyX = Double.parseDouble(data[4]); // Position X de l'éclaireur
+	            double enemyY = Double.parseDouble(data[5]); // Position Y de l'éclaireur
+
+	            firePosition(enemyX, enemyY);
+	            
+	            break; // On tire sur un seul ennemi pour éviter de spammer
+	        }
+	    }
+	}
+
+	private void firePosition(double x, double y){
+	    if (myX<=x) fire(Math.atan((y-myY)/(double)(x-myX)));
+	    else fire(Math.PI+Math.atan((y-myY)/(double)(x-myX)));
+	    return;
+	 }
+	
+	private void detectObstacleAndMove() {
+	    int constanteD = 200; // Distance pour éviter l'obstacle
+	    IFrontSensorResult.Types frontObject = detectFront().getObjectType();
+
+	    if (frontObject != IFrontSensorResult.Types.NOTHING) {
+
+	        	        if ((isTeamA && myX > 500 + constanteD) || (!isTeamA && myX < 2500 - constanteD)) {
+	            moveBack();
+	            myX -= Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	            myY -= Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	        } else {	            
+	            double newAngle = (Math.random() > 0.5) ? getHeading() + Math.PI / 2 : getHeading() - Math.PI / 2;
+	            turnTo(newAngle);
+
+	            targetX = myX + Math.cos(newAngle) * constanteD;
+	            targetY = myY + Math.sin(newAngle) * constanteD;
+	            
+	            moveToTarget();
+	        }
+	    }
+	}
+	private void myMove() {
+		move();
+		
+		// Mise à jour des coordonnées
+        myX += Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
+        myY += Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
+        
+        // envoyer sa position 
+		broadcast("POS "+whoAmI+ " " +myX+" "+myY);
+	}
 
 }
