@@ -19,7 +19,7 @@ import robotsimulator.Brain;
 abstract class MacDuoBaseBot extends Brain {
 	
 	protected static final double ANGLEPRECISION = 0.1;
-	protected enum State { MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT, FIRE };
+	protected enum State { FIRST_RDV, MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT, FIRE };
 	
 	protected final double BOT_RADIUS = 50;
 	protected final double BULLET_RADIUS = 5;
@@ -30,11 +30,13 @@ abstract class MacDuoBaseBot extends Brain {
     protected boolean isTeamA;
 	protected boolean rdv_point;
 	protected boolean turningTask = false;
+    private boolean friendlyFire;
 	
 	 //---VARIABLES---//
 	protected State state;
 	protected boolean isMoving;
 	protected double oldAngle;
+	
 	
 	protected Map<String, Double[]> allyPos = new HashMap<>();	// Stocker la position des alliés
 	protected Map<String, Double[]> wreckPos = new HashMap<>();	// Stocker la position des débris
@@ -44,7 +46,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	// se déplace au point de rdv donné 
 	protected void reach_rdv_point(double tX, double tY) {
-		if (rdv_point) {
+		//if (rdv_point) {
 		    double angleToTarget = Math.atan2(tY - myY, tX - myX);
 	
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
@@ -59,8 +61,8 @@ abstract class MacDuoBaseBot extends Brain {
 		    	rdv_point = false;
 		        //sendLogMessage("Position cible atteinte !");
 		    }
-		    freeze = true;
-		}
+		    //freeze = true;
+		//}
 	}
 	
 	// StepTurn Gauche ou Droite, selon un angle cible
@@ -145,7 +147,15 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
     private static final double TARGET_X2 = 900; 
     private static final double TARGET_Y2 = 1500;
     private double targetX, targetY; 
-	
+    
+    private boolean obstacleDetected = false;
+    private double obstacleDirection = 0;
+    private double avoidanceAngle = Math.PI/2;
+    private int avoidanceTimer = 0;
+    private static final int AVOIDANCE_DURATION = 10;
+    private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
+    private Parameters.Direction turnedDirection;
+    
 	//=========================================CORE=========================================	
 	public SecondaryMacDuo() {super();}
 
@@ -171,8 +181,8 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	    //INIT
 	    isMoving=true;
 	    rdv_point=true;
-	    state = State.MOVING;
-	    oldAngle = getHeading();
+	    state = State.FIRST_RDV;
+	    oldAngle = myGetHeading();
 	    targetX = (whoAmI == SBOT) ? TARGET_X2 : TARGET_X1;
 	    targetY = (whoAmI == SBOT) ? TARGET_Y2 : TARGET_Y1;
 	}
@@ -183,12 +193,17 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 		detection();
 		readMessages();
-		reach_rdv_point(targetX, targetY);
 		
 		if (freeze) return;
 		
 		switch (state) {
+			case FIRST_RDV:
+				if (rdv_point) {
+					reach_rdv_point(targetX, targetY);
+				}
+				break;
 			case MOVING :
+//				
 				myMove();
 				break;
 			case MOVING_BACK :
@@ -207,7 +222,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 
 	@Override
 	protected void detection () {
-		freeze=false;
+		//freeze=false;
 		// Détection des ennemis et envoi d'infos
 	    for (IRadarResult o : detectRadar()) {
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
@@ -217,12 +232,16 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	            sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	        }
-	    	if (o.getObjectDistance()<=100) {
-	    		freeze=true;
-	    	}
+	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
+	            double enemyX=myX+o.getObjectDistance()*Math.cos(o.getObjectDirection());
+	            double enemyY=myY+o.getObjectDistance()*Math.sin(o.getObjectDirection());
+	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	        }
+	    	
 	    }		
 	}
-	
+		
 	// Interprète les messages des alliés
 	private void readMessages() {
 		//freeze = true;
@@ -249,7 +268,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
             }
         }
     }
-	
+
 	protected void myMove() {
 		if(detectFront().getObjectType() == IFrontSensorResult.Types.NOTHING) {
 			move(); 
@@ -260,7 +279,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		}
         state = State.TURNING_LEFT;
         turningTask = true;
-        oldAngle = getHeading();
+        oldAngle = myGetHeading();
         turnLeft();
 	}
 	

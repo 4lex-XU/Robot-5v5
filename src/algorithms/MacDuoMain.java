@@ -2,7 +2,6 @@ package algorithms;
 
 import java.util.ArrayList;
 
-
 import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.Parameters;
@@ -15,7 +14,8 @@ import characteristics.Parameters;
 public class MacDuoMain extends MacDuoBaseBot {
 	
 	private static final double FIREANGLEPRECISION = Math.PI/(double)6;
-
+    private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
+    private static final double ENEMY_FIRING_RANGE = 900;
     
     // les ids des shooters
     private static final String MAIN1 = "1";
@@ -24,13 +24,22 @@ public class MacDuoMain extends MacDuoBaseBot {
     
     
     //---VARIABLES---//
-    private double rdvX, rdvY;  
+    private double rdvX, rdvY; 
     private double targetX, targetY;  
+    private double followTargetX, followTargetY; 
     private boolean friendlyFire;
     private boolean fireOrder;
     private int fireRythm,rythm,counter;
     private int countDown;
-
+    private Parameters.Direction turnedDirection;
+    private int fireCounter = 0;
+    private static final int MAX_FIRE_COUNT = 5; // Ajustez selon vos besoins
+    
+    private boolean obstacleDetected = false;
+    private double obstacleDirection = 0;
+    private double avoidanceAngle = Math.PI/2;
+    private int avoidanceTimer = 0;
+    private static final int AVOIDANCE_DURATION = 10;
 
  	
 	//=========================================CORE=========================================	
@@ -74,44 +83,49 @@ public class MacDuoMain extends MacDuoBaseBot {
                 sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
 	            break;
         }
-	    isMoving=true;
-	    state = State.MOVING;
+	    isMoving = true;
+	    state = State.FIRST_RDV;
 	    rdv_point = true;
+	    fireRythm = 0;
+	    oldAngle = myGetHeading();
     }
     
     @Override
     public void step() {
-    	
     	//DEBUG MESSAGE
-        boolean debug=true;
+        boolean debug = true;
         if (debug && whoAmI == MAIN1) {
-        	sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"Â°. #State= "+state);
+        	sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN2) {
-        	sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"Â°. #State= "+state);
+        	sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN3) {
-        	sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"Â°. #State= "+state);
+        	sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myX+", "+(int)myY+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
-        //if (debug && fireOrder) sendLogMessage("Firing enemy!!");
         
-    	detection();
+    	detection();	
+		if (state == State.FIRE) {
+			handleFire();
+			return;
+		}
 		readMessages();
-		reach_rdv_point(rdvX, rdvY);
-		
 		if (freeze) return;
 		
 		switch (state) {
-			case FIRE :
-				handleFire();
+			case FIRST_RDV:
+				if (rdv_point) {
+					reach_rdv_point(rdvX, rdvY);
+				}
 				break;
-			case MOVING :
-				myMove();
+			case MOVING:
+				reach_rdv_point(rdvX, rdvY);
+				//myMove();
 				break;
-			case MOVING_BACK :
+			case MOVING_BACK:
 				moveBack();
 				break;
-			case TURNING_LEFT :
+			case TURNING_LEFT:
 				turnLeft();
 				break;
 			case TURNING_RIGHT:
@@ -122,43 +136,132 @@ public class MacDuoMain extends MacDuoBaseBot {
     
 	//=========================================ADDED=========================================	
 
-    protected void detection () {
-		freeze=false;
-		// Détection des ennemis et envoi d'infos
+    protected void detection() {
+		freeze = false;
+	    friendlyFire = true;
+	    obstacleDetected = false;
+        boolean enemyDetected = false;
+        double enemyDistance = Double.MAX_VALUE;
+        double enemyDirection = 0;
+
+		// Détection des ennemis et des obstacles
 	    for (IRadarResult o : detectRadar()) {
+	    	// Enemy detection - highest priority
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
 	            // Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
+	            double enemyX = myX + o.getObjectDistance() * Math.cos(o.getObjectDirection());
+	            double enemyY = myY + o.getObjectDistance() * Math.sin(o.getObjectDirection());
+	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	            
+	            // Track closest enemy
+	            if (!enemyDetected || o.getObjectDistance() < enemyDistance) {
+                    enemyDetected = true;
+                    enemyDirection = o.getObjectDirection();
+                    enemyDistance = o.getObjectDistance();
+                    targetX = enemyX;
+                    targetY = enemyY;
+                }
+	        }
+	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
 	            double enemyX=myX+o.getObjectDistance()*Math.cos(o.getObjectDirection());
 	            double enemyY=myY+o.getObjectDistance()*Math.sin(o.getObjectDirection());
-	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	            sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	        }
-	    	if (o.getObjectDistance()<=100 && !isRoughlySameDirection(o.getObjectDirection(),getHeading()) && o.getObjectType()!=IRadarResult.Types.BULLET) {
-	    		freeze=true;
+
+	        // Friendly fire check
+	        if (o.getObjectType() == IRadarResult.Types.TeamMainBot || 
+	            o.getObjectType() == IRadarResult.Types.TeamSecondaryBot || 
+	            o.getObjectType() == IRadarResult.Types.Wreck) {
+	            if (fireOrder && onTheWay(o.getObjectDirection())) {
+	                friendlyFire = false;
+	            }
 	        }
-	        if (o.getObjectType()==IRadarResult.Types.TeamMainBot || o.getObjectType()==IRadarResult.Types.TeamSecondaryBot || o.getObjectType()==IRadarResult.Types.Wreck) {
-	          if (fireOrder && onTheWay(o.getObjectDirection())) {
-	            friendlyFire=false;
-	          }
+	        
+	        // Obstacle detection for movement
+	        if (o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
+	        	moveBack();
+	        	initiateObstacleAvoidance();
+	            obstacleDetected = true;
+	            obstacleDirection = o.getObjectDirection();
+	            sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
 	        }
-	    }		
+	    }
+	    
+	    // Set state based on detection priorities
+	    if (enemyDetected) {
+	        freeze = true;
+	        fireOrder = true;
+	        state = State.FIRE;
+	        avoidanceTimer = 0;
+	    } else if (obstacleDetected && state == State.MOVING) {
+	        initiateObstacleAvoidance();
+	    } else {
+	        state = State.MOVING; // Ensure state is MOVING if no enemy or obstacle is detected
+	    }
 	}
+    
+    private void initiateObstacleAvoidance() {
+        // Determine which way to turn based on obstacle direction
+        double relativeAngle = normalize(obstacleDirection - getHeading());
+        if (turnedDirection != null) {
+	        if (turnedDirection == Parameters.Direction.RIGHT) {
+	        	state = State.TURNING_RIGHT;
+	        }
+	        else {
+	        	 state = State.TURNING_LEFT;
+	        }
+        }
+        else if (relativeAngle > 0 && relativeAngle < Math.PI) {
+            // Obstacle is on the right, turn left
+        	turnedDirection = Parameters.Direction.RIGHT;
+        	state = State.TURNING_RIGHT;
+            sendLogMessage("Avoiding obstacle by turning right");
+        } else {
+            // Obstacle is on the left, turn right
+        	turnedDirection = Parameters.Direction.LEFT;
+            state = State.TURNING_LEFT;
+            sendLogMessage("Avoiding obstacle by turning left");
+        }
+        
+        oldAngle = myGetHeading();
+        turningTask = true;
+        avoidanceTimer = AVOIDANCE_DURATION;
+    }
     
     private void readMessages() {
         ArrayList<String> messages = fetchAllMessages();
         for (String msg : messages) {
             String[] parts = msg.split(" ");
             switch (parts[0]) {
-	            case "POS" :
-	            	double targetX = Double.parseDouble(parts[2]);
-	                double targetY = Double.parseDouble(parts[3]);
-	            	allyPos.put(parts[1], new Double[]{targetX, targetY});
+            	case "ENEMY":
+	                handleEnemyMessage(parts);
+	                break;
+                case "WRECK" :
+                	handleWreckMessage(parts);
+                	break;
+	            case "POS":
+	            	double botX = Double.parseDouble(parts[2]);
+	                double botY = Double.parseDouble(parts[3]);
+	            	allyPos.put(parts[1], new Double[]{botX, botY});
+	            	// Only follow scouts if we've already reached our initial rdv point
+	            	// if ((parts[1].equals("NBOT") || parts[1].equals("SBOT"))) {
+	                if (parts[1].equals("SBOT")) {
+	                    // Different main bots can follow different scouts
+//	                    if ((whoAmI.equals(MAIN1) && parts[1].equals("NBOT")) || 
+//	                        (whoAmI.equals(MAIN2) && parts[1].equals("SBOT")) ||
+//	                        (whoAmI.equals(MAIN3) && parts[1].equals("SBOT"))) {
+	                        
+	                        // Only update targets if we're not already engaging an enemy
+	                        if (state != State.FIRE) {
+	                            rdvX = botX;
+	                            rdvY = botY;
+	                            sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + targetX + ", " + targetY);
+	                        }
+	                    //}
+	                }
 	            	break;
-                case "ENEMY":
-                	//sendLogMessage("enemy message received");
-                    handleEnemyMessage(parts);
-                    break;
-             
+                
                 case "SCOUT_DOWN_A":
                 case "SCOUT_DOWN_B":
                     break;
@@ -166,83 +269,101 @@ public class MacDuoMain extends MacDuoBaseBot {
         }
     }
 
+    private void handleWreckMessage(String[] parts) {
+    	state = State.MOVING;
+		targetX = 0;
+		targetY = 0;
+		fireOrder = true;
+	}
+    
     private void handleEnemyMessage(String[] parts) {
-    	fireOrder=true;
+    	fireOrder = true;
         double enemyX = Double.parseDouble(parts[4]);
         double enemyY = Double.parseDouble(parts[5]);
+        
+     // Calculer la direction de l'ennemi
+        double enemyDirection = Math.atan((enemyY-myY)/(double)(enemyX-myX));
 
-        double dx = enemyX - myX;
-        double dy = enemyY - myY;
-
-        double distanceEnemyMe = Math.sqrt(dx * dx + dy * dy);
-        //sendLogMessage("distanceEnemyMe " + distanceEnemyMe);
-        if (distanceEnemyMe <= 900) {
-            state = State.FIRE;
-        } else {
-        	if (!turningTask) state = State.MOVING;
-            targetX = enemyX;
-            targetY = enemyY;
-        }
+        // Vérifier si un coéquipier est dans la direction de l'ennemi
+//        for (Double[] allyPosition : allyPos.values()) {
+//            double allyX = allyPosition[0];
+//            double allyY = allyPosition[1];
+//            double allyDirection = Math.atan((allyY-myY)/(double)(allyX-myX));
+//            if (isRoughlySameDirection(allyDirection, enemyDirection)) {
+//            	sendLogMessage("ally is found in this direction can not fire");
+//            	friendlyFire = false;
+//            	state = State.MOVING;
+//                return;
+//            }
+//        }
+        state = State.FIRE;
+        targetX = enemyX;
+        targetY = enemyY;
+        handleFire();
     }
     
-    private void handleFire () {
-    	//sendLogMessage("Firing at target: " + targetX + ", " + targetY);
-        
+    private void handleFire() {
         // Vérifier si on a bien une cible
         if (targetX != 0 && targetY != 0) {
             double dx = targetX - myX;
             double dy = targetY - myY;
 
-            // Vérifier qu'on ne tire pas sur un allié
-            if (friendlyFire) {
-                //sendLogMessage("Friendly fire detected! Holding fire.");
-                state = State.MOVING;
-                return;
+            if (fireOrder && friendlyFire) {
+                firePosition(targetX, targetY);
             }
-
-            // Tirer sur l'ennemi
-            firePosition(targetX, targetY);
 
             // Vérifier la distance après tir
             double distanceEnemyMe = Math.sqrt(dx * dx + dy * dy);
-            if (distanceEnemyMe > 900) {
+            if (distanceEnemyMe > ENEMY_FIRING_RANGE) {
                 state = State.MOVING;
-                //sendLogMessage("Enemy out of range, switching to MOVING.");
+                fireOrder = false;
             }
         } else {
-            //sendLogMessage("No target available, switching to MOVING.");
             state = State.MOVING;
+            fireOrder = false;
         }
     }
     
-	
 	protected void myMove() {
-	    if (!rdv_point && !(detectFront().getObjectType()==IFrontSensorResult.Types.NOTHING) ) {
-	    	state = State.TURNING_LEFT;
-	    	oldAngle = myGetHeading();
-	    	turningTask = true;
-	    	stepTurn(Parameters.Direction.LEFT);
-	    	return;
+	    // If we're in avoidance mode
+	    if (avoidanceTimer > 0) {
+	        avoidanceTimer--;
+	        if (avoidanceTimer == 0) {
+	            state = State.MOVING; // Back to normal movement when avoidance complete
+	        }
+	        return;
 	    }
+	    
+	    // Regular movement when no active avoidance
+	    if (!rdv_point && (obstacleDetected || detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING)) {
+	        initiateObstacleAvoidance();
+	        return;
+	    }
+	    
 		move();
+		turnedDirection = null;
         myX += Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
         myY += Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
         sendMyPosition();
 	}
 	
-	private void firePosition(double x, double y){
-	    if (myX<=x) fire(Math.atan((y-myY)/(double)(x-myX)));
-	    else 		fire(Math.PI+Math.atan((y-myY)/(double)(x-myX)));
-	    return;
-	 }
-	
-	private boolean isRoughlySameDirection(double dir1, double dir2){
-	    return Math.abs(normalize(dir1)-normalize(dir2))<FIREANGLEPRECISION;
+	private void firePosition(double x, double y) {
+	    if (myX <= x) {
+	        fire(Math.atan((y-myY)/(double)(x-myX)));
+	    } else {
+	        fire(Math.PI+Math.atan((y-myY)/(double)(x-myX)));
+	    }
 	}
 	
-	private boolean onTheWay(double angle){
-	    if (myX<=targetX) return isRoughlySameDirection(angle,Math.atan((targetY-myY)/(double)(targetX-myX)));
-	    else return isRoughlySameDirection(angle,Math.PI+Math.atan((targetY-myY)/(double)(targetX-myX)));
-	  }
-
+	private boolean isRoughlySameDirection(double dir1, double dir2) {
+	    return Math.abs(normalize(dir1) - normalize(dir2)) < FIREANGLEPRECISION;
+	}
+	
+	private boolean onTheWay(double angle) {
+	    if (myX <= targetX) {
+	        return isRoughlySameDirection(angle, Math.atan((targetY-myY)/(double)(targetX-myX)));
+	    } else {
+	        return isRoughlySameDirection(angle, Math.PI + Math.atan((targetY-myY)/(double)(targetX-myX)));
+	    }
+	}
 }
