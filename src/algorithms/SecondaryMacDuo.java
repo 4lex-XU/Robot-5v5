@@ -258,10 +258,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	private void readMessages() {
 		//freeze = true;
         ArrayList<String> messages = fetchAllMessages();
-        // messages affichés à l'instant T
-        //if (whoAmI == NBOT) {
-        //System.out.println("Lecture message " + count++);
-        //System.out.println(messages);}
         for (String msg : messages) {
             String[] parts = msg.split(" ");
             switch (parts[0]) {
@@ -283,11 +279,17 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 
 	protected void myMove() {
 		if(detectFront().getObjectType() == IFrontSensorResult.Types.NOTHING) {
-			move(); 
-            myX += Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
-            myY += Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
-    		sendMyPosition();
-    		return;
+			double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+			double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+
+			// évite de se bloquer dans les murs
+			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+				move(); 
+	            myX = myPredictedX;
+	            myY = myPredictedY;
+	    		sendMyPosition();
+	    		return;
+			}
 		}
         state = State.TURNING_LEFT;
         turningTask = true;

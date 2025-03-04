@@ -2,6 +2,7 @@ package algorithms;
 
 import java.util.ArrayList;
 
+import algorithms.MacDuoBaseBot.State;
 import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.Parameters;
@@ -111,6 +112,10 @@ public class MacDuoMain extends MacDuoBaseBot {
 		}
 		readMessages();
 		if (freeze) return;
+		
+		if (getHealth() <= 0) {
+			state = State.DEAD;
+		}
 		
 		switch (state) {
 			case FIRST_RDV:
@@ -241,25 +246,7 @@ public class MacDuoMain extends MacDuoBaseBot {
                 	handleWreckMessage(parts);
                 	break;
 	            case "POS":
-	            	double botX = Double.parseDouble(parts[2]);
-	                double botY = Double.parseDouble(parts[3]);
-	            	allyPos.put(parts[1], new Double[]{botX, botY});
-	            	// Only follow scouts if we've already reached our initial rdv point
-	            	// if ((parts[1].equals("NBOT") || parts[1].equals("SBOT"))) {
-	                if (parts[1].equals("SBOT")) {
-	                    // Different main bots can follow different scouts
-//	                    if ((whoAmI.equals(MAIN1) && parts[1].equals("NBOT")) || 
-//	                        (whoAmI.equals(MAIN2) && parts[1].equals("SBOT")) ||
-//	                        (whoAmI.equals(MAIN3) && parts[1].equals("SBOT"))) {
-	                        
-	                        // Only update targets if we're not already engaging an enemy
-	                        if (state != State.FIRE) {
-	                            rdvX = botX;
-	                            rdvY = botY;
-	                            sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + targetX + ", " + targetY);
-	                        }
-	                    //}
-	                }
+	            	handlePosMessage(parts);
 	            	break;
 	            case "MOVING_BACK":
 	            	double enemyX = Double.parseDouble(parts[2]);
@@ -277,6 +264,20 @@ public class MacDuoMain extends MacDuoBaseBot {
         }
     }
 
+    private void handlePosMessage(String[] parts) {
+    	double botX = Double.parseDouble(parts[2]);
+        double botY = Double.parseDouble(parts[3]);
+    	allyPos.put(parts[1], new Double[]{botX, botY});{
+            if (parts[1].equals("SBOT")) {
+                if (state != State.FIRE) {
+                    rdvX = botX;
+                    rdvY = botY;
+                    sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
+                }
+            }
+    	}
+    }
+    
     private void handleWreckMessage(String[] parts) {
     	state = State.MOVING;
 		targetX = 0;
@@ -348,11 +349,17 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        return;
 	    }
 	    
-		move();
-		turnedDirection = null;
-        myX += Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
-        myY += Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
-        sendMyPosition();
+	    double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
+		double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
+
+		// évite de se bloquer dans les murs
+		if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+			move(); 
+            myX = myPredictedX;
+            myY = myPredictedY;
+    		sendMyPosition();
+    		return;
+		}
 	}
 	
 	private void firePosition(double x, double y) {
