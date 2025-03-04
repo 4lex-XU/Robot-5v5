@@ -15,13 +15,8 @@ import characteristics.Parameters;
 public class MacDuoMain extends MacDuoBaseBot {
 	
 	private static final double FIREANGLEPRECISION = Math.PI/(double)6;
-    private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
+    private static final double OBSTACLE_AVOIDANCE_DISTANCE = 100;
     private static final double ENEMY_FIRING_RANGE = 900;
-    
-    // les ids des shooters
-    private static final String MAIN1 = "1";
-    private static final String MAIN2 = "2";
-    private static final String MAIN3 = "3";
     
     
     //---VARIABLES---//
@@ -67,21 +62,21 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            myY = isTeamA ? Parameters.teamAMainBot1InitY : Parameters.teamBMainBot1InitY;
 	            rdvX = isTeamA ? 300 : 2500;
 	            rdvY = 1100;
-                sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
+                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
                 break;
 	        case MAIN2 : 
 	        	myX = isTeamA ? Parameters.teamAMainBot2InitX : Parameters.teamBMainBot2InitX;
 	            myY = isTeamA ? Parameters.teamAMainBot2InitY : Parameters.teamBMainBot2InitY;
 	            rdvX = isTeamA ? 450 : 2400;
 	            rdvY = 1350;
-                sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
+                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
 	            break;
 	        case MAIN3 : 
 	        	myX = isTeamA ? Parameters.teamAMainBot3InitX : Parameters.teamBMainBot3InitX;
 	            myY = isTeamA ? Parameters.teamAMainBot3InitY : Parameters.teamBMainBot3InitY;
 	            rdvX = isTeamA ? 600 : 2300;
 	            rdvY = 1700;
-                sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
+                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
 	            break;
         }
 	    isMoving = true;
@@ -125,17 +120,18 @@ public class MacDuoMain extends MacDuoBaseBot {
 				break;
 			case MOVING:
 				reach_rdv_point(rdvX, rdvY);
-				//myMove();
 				break;
 			case MOVING_BACK:
-				moveBack();
+				myMove(false);
 				break;
 			case TURNING_LEFT:
 				turnLeft();
 				break;
 			case TURNING_RIGHT:
 				turnRight();	
-				break;		
+				break;	
+			default:
+				break;	
 		}
     }
     
@@ -184,12 +180,13 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        }
 	        
 	        // Obstacle detection for movement
-	        if (o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
-	        	moveBack();
+			obstacleDirection = o.getObjectDirection();
+	        if ((o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && ((isSameDirection(obstacleDirection, Parameters.NORTH) || isSameDirection(obstacleDirection, Parameters.SOUTH)))) 
+					|| detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
+				obstacleDetected = true;
 	        	initiateObstacleAvoidance();
-	            obstacleDetected = true;
-	            obstacleDirection = o.getObjectDirection();
-	            sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
+				System.out.println("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
+	            //sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
 	        }
 	    }
 	    
@@ -221,12 +218,12 @@ public class MacDuoMain extends MacDuoBaseBot {
             // Obstacle is on the right, turn left
         	turnedDirection = Parameters.Direction.RIGHT;
         	state = State.TURNING_RIGHT;
-            sendLogMessage("Avoiding obstacle by turning right");
+            //gMessage("Avoiding obstacle by turning right");
         } else {
             // Obstacle is on the left, turn right
         	turnedDirection = Parameters.Direction.LEFT;
             state = State.TURNING_LEFT;
-            sendLogMessage("Avoiding obstacle by turning left");
+            //sendLogMessage("Avoiding obstacle by turning left");
         }
         
         oldAngle = myGetHeading();
@@ -254,7 +251,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            	double distance = Math.sqrt(Math.pow(enemyX - myX, 2) + Math.pow(enemyY - myY, 2));
 	            	if (distance < 700){
 	            		state = State.MOVING_BACK;
-	            		moveBack();
+	            		myMove(false);
 	            	}
 	            	break;
                 case "SCOUT_DOWN_A":
@@ -267,12 +264,12 @@ public class MacDuoMain extends MacDuoBaseBot {
     private void handlePosMessage(String[] parts) {
     	double botX = Double.parseDouble(parts[2]);
         double botY = Double.parseDouble(parts[3]);
-    	allyPos.put(parts[1], new Double[]{botX, botY});{
+    	allyPos.put(parts[1], new BotState(botX, botY, true));{
             if (parts[1].equals("SBOT")) {
                 if (state != State.FIRE) {
                     rdvX = botX;
                     rdvY = botY;
-                    sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
+                    //sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
                 }
             }
     	}
@@ -290,16 +287,17 @@ public class MacDuoMain extends MacDuoBaseBot {
         double enemyX = Double.parseDouble(parts[4]);
         double enemyY = Double.parseDouble(parts[5]);
         
-     // Calculer la direction de l'ennemi
+    	 // Calculer la direction de l'ennemi
         double enemyDirection = Math.atan((enemyY-myY)/(double)(enemyX-myX));
 
         // Vérifier si un coéquipier est dans la direction de l'ennemi
-        for (Double[] allyPosition : allyPos.values()) {
-            double allyX = allyPosition[0];
-            double allyY = allyPosition[1];
+        for (BotState ally : allyPos.values()) {
+			Position allyPosition = ally.getPosition();
+            double allyX = allyPosition.getX();
+            double allyY = allyPosition.getY();
             double allyDirection = Math.atan((allyY-myY)/(double)(allyX-myX));
             if (isRoughlySameDirection(allyDirection, enemyDirection)) {
-            	sendLogMessage("ally is found in this direction can not fire");
+            	//sendLogMessage("ally is found in this direction can not fire");
             	friendlyFire = false;
             	state = State.MOVING;
                 return;
@@ -333,32 +331,47 @@ public class MacDuoMain extends MacDuoBaseBot {
         }
     }
     
-	protected void myMove() {
-	    // If we're in avoidance mode
-	    if (avoidanceTimer > 0) {
-	        avoidanceTimer--;
-	        if (avoidanceTimer == 0) {
-	            state = State.MOVING; // Back to normal movement when avoidance complete
-	        }
-	        return;
-	    }
-	    
-	    // Regular movement when no active avoidance
-	    if (!rdv_point && (obstacleDetected || detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING)) {
-	        initiateObstacleAvoidance();
-	        return;
-	    }
-	    
-	    double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
-		double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
+	protected void myMove(boolean forward) {
+		if (forward) {
+			// If we're in avoidance mode
+			if (avoidanceTimer > 0) {
+				avoidanceTimer--;
+				if (avoidanceTimer == 0) {
+					state = State.MOVING; // Back to normal movement when avoidance complete
+				}
+				return;
+			}
+			
+			// Regular movement when no active avoidance
+			if (!rdv_point && (obstacleDetected || detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING)) {
+				initiateObstacleAvoidance();
+				return;
+			}
+			
+			double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
+			double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
 
-		// évite de se bloquer dans les murs
-		if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
-			move(); 
-            myX = myPredictedX;
-            myY = myPredictedY;
-    		sendMyPosition();
-    		return;
+			// évite de se bloquer dans les murs
+			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+				move(); 
+				myX = myPredictedX;
+				myY = myPredictedY;
+				sendMyPosition();
+				return;
+			}
+		} else {
+			// Backward movement
+			double myPredictedX = myX - Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
+			double myPredictedY = myY - Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
+
+			// évite de se bloquer dans les murs
+			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+				moveBack();
+				myX = myPredictedX;
+				myY = myPredictedY;
+				sendMyPosition();
+				return;
+			}
 		}
 	}
 	

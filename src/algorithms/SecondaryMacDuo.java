@@ -2,21 +2,59 @@ package algorithms;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
-import algorithms.MacDuoBaseBot.State;
+
 import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.Parameters;
 import robotsimulator.Brain;
 
+class BotState {
+	private Position position = new Position(0, 0);
+	private boolean isAlive = true;
+
+	public BotState() {}
+	public BotState(double x, double y, boolean alive) {
+		position.setX(x);
+		position.setY(y);
+		isAlive = alive;
+	}
+
+	public void setPosition(double x, double y) {
+		position.setX(x);
+		position.setY(y);
+	}
+	public Position getPosition() {return position;}
+	public void setAlive(boolean alive) {isAlive = alive;}
+	public boolean isAlive() {return isAlive;}
+}
+
+class Position {
+	private double x;
+	private double y;
+	
+	public Position(double x, double y) {
+		this.x = x;
+		this.y = y;
+	}
+	
+	public void setX(double x) {this.x = x;}
+	public void setY(double y) {this.y = y;}
+	public double getX() {return x;}
+	public double getY() {return y;}
+}
 //====================================================================================
 //====================================ABSTRACT BOT====================================
 //====================================================================================
 
 abstract class MacDuoBaseBot extends Brain {
+
+	protected static final String NBOT = "NBOT";
+    protected static final String SBOT = "SBOT";
+	protected static final String MAIN1 = "1";
+	protected static final String MAIN2 = "2";
+	protected static final String MAIN3 = "3";
 	
 	protected static final double ANGLEPRECISION = 0.1;
 	protected enum State {FIRST_RDV, MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT, FIRE, DEAD };
@@ -30,7 +68,6 @@ abstract class MacDuoBaseBot extends Brain {
     protected boolean isTeamA;
 	protected boolean rdv_point;
 	protected boolean turningTask = false;
-    private boolean friendlyFire;
 	
 	 //---VARIABLES---//
 	protected State state;
@@ -38,10 +75,19 @@ abstract class MacDuoBaseBot extends Brain {
 	protected double oldAngle;
 	
 	
-	protected Map<String, Double[]> allyPos = new HashMap<>();	// Stocker la position des alliés
+	protected Map<String, BotState> allyPos = new HashMap<>();	// Stocker la position des alliés
 	protected Map<String, Double[]> wreckPos = new HashMap<>();	// Stocker la position des débris
 	
-	protected abstract void myMove();
+	public MacDuoBaseBot() {
+		super();
+		allyPos.put(NBOT, new BotState());
+		allyPos.put(SBOT, new BotState());
+		allyPos.put(MAIN1, new BotState());
+		allyPos.put(MAIN2, new BotState());
+		allyPos.put(MAIN3, new BotState());
+	}
+
+	protected abstract void myMove(boolean forward);
 	protected abstract void detection();
 	
 	// se déplace au point de rdv donné 
@@ -55,7 +101,7 @@ abstract class MacDuoBaseBot extends Brain {
 
 		    } else {
 		        //sendLogMessage("Angle correct, déplacement...");
-		        myMove();	       
+		        myMove(true);	       
 		    }
 		    if (Math.abs(myX - tX) < 5 && Math.abs(myY - tY) < 5) {
 		    	rdv_point = false;
@@ -85,7 +131,8 @@ abstract class MacDuoBaseBot extends Brain {
 	//=========================================BASE=========================================
 
 	protected boolean isSameDirection(double dir1, double dir2) {
-	    return Math.abs(normalize(dir1)-normalize(dir2))<ANGLEPRECISION;
+		double diff = Math.abs(normalize(dir1) - normalize(dir2));
+		return diff < ANGLEPRECISION || Math.abs(diff - 2 * Math.PI) < ANGLEPRECISION;
 	}
 	
 	protected double normalize(double dir){
@@ -115,7 +162,7 @@ abstract class MacDuoBaseBot extends Brain {
 	    	turningTask = false;
 	    	System.out.println("trying to move");
 	        state = State.MOVING;
-	        myMove();
+	        myMove(true);
 	    }				
 	}
 	
@@ -126,7 +173,7 @@ abstract class MacDuoBaseBot extends Brain {
 	    	turningTask = false;
 	    	System.out.println("trying to move");
 	        state = State.MOVING;
-	        myMove();
+	        myMove(true);
 	    }				
 	}
 }
@@ -135,10 +182,7 @@ abstract class MacDuoBaseBot extends Brain {
 //====================================SECONDARY====================================
 //=================================================================================
 
-public class SecondaryMacDuo extends MacDuoBaseBot{
-
-    private static final String NBOT = "NBOT";
-    private static final String SBOT = "SBOT";	
+public class SecondaryMacDuo extends MacDuoBaseBot{	
     
     private int count;
     
@@ -189,12 +233,20 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	}
 
 	@Override
-	public void step() {
-		System.out.println(whoAmI+" myX, myY "+myX + " " + myY);
-		
+	public void step() {		
 		detection();
-		//readMessages();
-		
+		readMessages();
+		freeze = true;
+
+		// J'avance si au moins un allié est à moins de 600 de distance
+		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
+			double distance = Math.sqrt(Math.pow(entry.getValue().getPosition().getX() - myX, 2) + Math.pow(entry.getValue().getPosition().getY() - myY, 2));
+			if (entry.getValue().isAlive() && distance < 500 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+				freeze = false;
+				break;
+			}
+		}
+
 		if (freeze) return;
 		
 		if (getHealth() <= 0) {
@@ -208,16 +260,18 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				}
 				break;
 			case MOVING :				
-				myMove();
+				myMove(true);
 				break;
 			case MOVING_BACK :
-				moveBack();
+				myMove(false);
 				break;
 			case TURNING_LEFT :
 				turnLeft();
 				break;
 			case TURNING_RIGHT:
 				turnRight();	
+				break;
+			default:
 				break;	
 		}
 	}
@@ -226,7 +280,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 
 	@Override
 	protected void detection () {
-		//freeze=false;
 		// Détection des ennemis et envoi d'infos
 	    for (IRadarResult o : detectRadar()) {
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
@@ -238,7 +291,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
             	if (o.getObjectDistance() < 300) {
     	            broadcast("MOVING_BACK " + whoAmI + " " + enemyX + " " + enemyY);
             		state = State.MOVING_BACK;
-            		moveBack();
+            		myMove(false);
             	}else if (o.getObjectDistance() > 450) {
             		state = State.MOVING;
             	}
@@ -256,7 +309,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 	// Interprète les messages des alliés
 	private void readMessages() {
-		//freeze = true;
         ArrayList<String> messages = fetchAllMessages();
         for (String msg : messages) {
             String[] parts = msg.split(" ");
@@ -265,36 +317,47 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	            	if (!turningTask) state = State.MOVING;
 	            	double targetX = Double.parseDouble(parts[2]);
 	                double targetY = Double.parseDouble(parts[3]);
-	            	allyPos.put(parts[1], new Double[]{targetX, targetY});
+	            	allyPos.put(parts[1], new BotState(targetX, targetY, true));
 	            	double distance = Math.sqrt(Math.pow(targetX - myX, 2) + Math.pow(targetY - myY, 2));
-	        	    if (distance < 500 && parts[1] != "NBOT" && parts[1] != "SBOT") {
-	        	        //freeze=false;
-	        	        // à modifier, le bot attend que tous les shooters soient à range, cas impossible
-	        	      
-	        	    }
 	            	break;
             }
         }
     }
 
-	protected void myMove() {
-		if(detectFront().getObjectType() == IFrontSensorResult.Types.NOTHING) {
-			double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
-			double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+	protected void myMove(boolean forward) {
+		if (forward) {
+			if(detectFront().getObjectType() == IFrontSensorResult.Types.NOTHING) {
+				double myPredictedX = myX + Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+				double myPredictedY = myY + Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
 
-			// évite de se bloquer dans les murs
-			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
-				move(); 
-	            myX = myPredictedX;
-	            myY = myPredictedY;
-	    		sendMyPosition();
-	    		return;
+				// évite de se bloquer dans les murs
+				if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+					move(); 
+		            myX = myPredictedX;
+		            myY = myPredictedY;
+		    		sendMyPosition();
+		    		return;
+				}
+			}
+		} else {
+			if(detectFront().getObjectType() == IFrontSensorResult.Types.NOTHING) {
+				double myPredictedX = myX - Math.cos(getHeading()) * Parameters.teamASecondaryBotSpeed;
+				double myPredictedY = myY - Math.sin(getHeading()) * Parameters.teamASecondaryBotSpeed;
+
+				// évite de se bloquer dans les murs
+				if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
+					moveBack(); 
+		            myX = myPredictedX;
+		            myY = myPredictedY;
+		    		sendMyPosition();
+		    		return;
+				}
 			}
 		}
-        state = State.TURNING_LEFT;
-        turningTask = true;
-        oldAngle = myGetHeading();
-        turnLeft();
+		state = State.TURNING_LEFT;
+		turningTask = true;
+		oldAngle = myGetHeading();
+		turnLeft();
 	}
 	
 	
