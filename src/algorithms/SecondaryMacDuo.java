@@ -19,7 +19,7 @@ import robotsimulator.Brain;
 abstract class MacDuoBaseBot extends Brain {
 	
 	protected static final double ANGLEPRECISION = 0.1;
-	protected enum State { FIRST_RDV, MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT, FIRE };
+	protected enum State {FIRST_RDV, MOVING, MOVING_BACK, TURNING_LEFT, TURNING_RIGHT, FIRE, DEAD };
 	
 	protected final double BOT_RADIUS = 50;
 	protected final double BULLET_RADIUS = 5;
@@ -59,6 +59,7 @@ abstract class MacDuoBaseBot extends Brain {
 		    }
 		    if (Math.abs(myX - tX) < 5 && Math.abs(myY - tY) < 5) {
 		    	rdv_point = false;
+		    	state = State.MOVING;
 		        //sendLogMessage("Position cible atteinte !");
 		    }
 		    //freeze = true;
@@ -189,12 +190,16 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 
 	@Override
 	public void step() {
-		
+		System.out.println(whoAmI+" myX, myY "+myX + " " + myY);
 		
 		detection();
-		readMessages();
+		//readMessages();
 		
 		if (freeze) return;
+		
+		if (getHealth() <= 0) {
+			state = State.DEAD;
+		}
 		
 		switch (state) {
 			case FIRST_RDV:
@@ -202,8 +207,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 					reach_rdv_point(targetX, targetY);
 				}
 				break;
-			case MOVING :
-//				
+			case MOVING :				
 				myMove();
 				break;
 			case MOVING_BACK :
@@ -214,7 +218,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				break;
 			case TURNING_RIGHT:
 				turnRight();	
-				break;		
+				break;	
 		}
 	}
 	
@@ -231,6 +235,14 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	            double enemyY=myY+o.getObjectDistance()*Math.sin(o.getObjectDirection());
 	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	            sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+            	if (o.getObjectDistance() < 300) {
+    	            broadcast("MOVING_BACK " + whoAmI + " " + enemyX + " " + enemyY);
+            		state = State.MOVING_BACK;
+            		moveBack();
+            	}else if (o.getObjectDistance() > 450) {
+            		state = State.MOVING;
+            	}
+	            
 	        }
 	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
 	            double enemyX=myX+o.getObjectDistance()*Math.cos(o.getObjectDirection());

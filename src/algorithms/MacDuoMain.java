@@ -261,7 +261,15 @@ public class MacDuoMain extends MacDuoBaseBot {
 	                    //}
 	                }
 	            	break;
-                
+	            case "MOVING_BACK":
+	            	double enemyX = Double.parseDouble(parts[2]);
+	                double enemyY = Double.parseDouble(parts[3]);
+	            	double distance = Math.sqrt(Math.pow(enemyX - myX, 2) + Math.pow(enemyY - myY, 2));
+	            	if (distance < 700){
+	            		state = State.MOVING_BACK;
+	            		moveBack();
+	            	}
+	            	break;
                 case "SCOUT_DOWN_A":
                 case "SCOUT_DOWN_B":
                     break;
@@ -285,17 +293,17 @@ public class MacDuoMain extends MacDuoBaseBot {
         double enemyDirection = Math.atan((enemyY-myY)/(double)(enemyX-myX));
 
         // Vérifier si un coéquipier est dans la direction de l'ennemi
-//        for (Double[] allyPosition : allyPos.values()) {
-//            double allyX = allyPosition[0];
-//            double allyY = allyPosition[1];
-//            double allyDirection = Math.atan((allyY-myY)/(double)(allyX-myX));
-//            if (isRoughlySameDirection(allyDirection, enemyDirection)) {
-//            	sendLogMessage("ally is found in this direction can not fire");
-//            	friendlyFire = false;
-//            	state = State.MOVING;
-//                return;
-//            }
-//        }
+        for (Double[] allyPosition : allyPos.values()) {
+            double allyX = allyPosition[0];
+            double allyY = allyPosition[1];
+            double allyDirection = Math.atan((allyY-myY)/(double)(allyX-myX));
+            if (isRoughlySameDirection(allyDirection, enemyDirection)) {
+            	sendLogMessage("ally is found in this direction can not fire");
+            	friendlyFire = false;
+            	state = State.MOVING;
+                return;
+            }
+        }
         state = State.FIRE;
         targetX = enemyX;
         targetY = enemyY;
