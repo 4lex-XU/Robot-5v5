@@ -104,7 +104,9 @@ abstract class MacDuoBaseBot extends Brain {
 	protected Map<String, BotState> allyPos = new HashMap<>();	// Stocker la position des alliés
 	protected Map<Position, IRadarResult.Types> oppPos = new HashMap<>();	// Stocker la position des opposants
 	protected Map<String, Double[]> wreckPos = new HashMap<>();	// Stocker la position des débris
-
+	
+    private int avoidanceTimer = 0;
+    private static final int AVOIDANCE_DURATION = 10;
 	
 	public MacDuoBaseBot() {
 		super();
@@ -185,7 +187,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected void turnLeft() {
 		
-		if (!isSameDirection(getHeading(),oldAngle+Parameters.LEFTTURNFULLANGLE)) {
+		if (!isSameDirection(getHeading(),oldAngle+(-0.25 * Math.PI))) {
 			stepTurn(Parameters.Direction.LEFT);
 	    } else {
 	    	turningTask = false;
@@ -196,7 +198,7 @@ abstract class MacDuoBaseBot extends Brain {
 	}
 	
 	protected void turnRight() {
-		if (!isSameDirection(getHeading(),oldAngle+Parameters.RIGHTTURNFULLANGLE)) {
+		if (!isSameDirection(getHeading(),oldAngle+(0.25 * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
 	    } else {
 	    	turningTask = false;
@@ -252,6 +254,110 @@ abstract class MacDuoBaseBot extends Brain {
 	    }
 	    return bestAngle;
 	}
+	
+	protected boolean isObstacleInPath(double robotX, double robotY, double robotHeading, double robotRadius, IRadarResult obstacle) {
+		// Longueur de la trajectoire à vérifier
+		double pathLength = 100;
+		
+		// Position de l'obstacle
+		double obstacleX = robotX + obstacle.getObjectDistance() * Math.cos(obstacle.getObjectDirection());
+		double obstacleY = robotY + obstacle.getObjectDistance() * Math.sin(obstacle.getObjectDirection());
+		double obstacleRadius = obstacle.getObjectRadius();
+		
+		// Vérification de plusieurs points le long de la trajectoire
+		int numPoints = 10; // Nombre de points à vérifier
+		double stepSize = pathLength / numPoints;
+		
+		for (int i = 0; i <= numPoints; i++) {
+			// Position du point à vérifier sur la trajectoire
+			double checkX = robotX + i * stepSize * Math.cos(robotHeading);
+			double checkY = robotY + i * stepSize * Math.sin(robotHeading);
+			
+			// Distance entre ce point et l'obstacle
+			double distance = Math.sqrt(Math.pow(checkX - obstacleX, 2) + Math.pow(checkY - obstacleY, 2));
+			
+			// Si la distance est inférieure à la somme des rayons, il y a collision
+			if (distance < (robotRadius + obstacleRadius)) {
+				return true;
+			}
+		}
+		
+		// Une autre approche: calculer la distance minimale entre la ligne de trajectoire et l'obstacle
+		// Utilisation de la formule de distance point-ligne
+		double dx = Math.cos(robotHeading);
+		double dy = Math.sin(robotHeading);
+		
+		// Vecteur de l'obstacle au robot
+		double vx = obstacleX - robotX;
+		double vy = obstacleY - robotY;
+		
+		// Produit scalaire
+		double dot = vx * dx + vy * dy;
+		
+		// Si l'obstacle est derrière le robot, on ne le considère pas
+		if (dot < 0) {
+			return false;
+		}
+		
+		// Si l'obstacle est trop loin devant, on ne le considère pas
+		if (dot > pathLength) {
+			return false;
+		}
+		
+		// Projection sur la trajectoire
+		double projX = robotX + dot * dx;
+		double projY = robotY + dot * dy;
+		
+		// Distance entre l'obstacle et sa projection sur la trajectoire
+		double lateralDistance = Math.sqrt(Math.pow(obstacleX - projX, 2) + Math.pow(obstacleY - projY, 2));
+		
+		// Si cette distance est inférieure à la somme des rayons, il y a collision
+		return lateralDistance < (robotRadius + obstacleRadius);
+	}
+	
+	protected void initiateObstacleAvoidance() {
+	    double relativeAngle = normalize(obstacleDirection - getHeading());
+	    boolean randomTurn = Math.random() > 0.5;
+	    if (turnedDirection != null) {
+	        if (avoidanceTimer <= 0) {
+	            if (turnedDirection == Parameters.Direction.RIGHT) {
+	                turnedDirection = Parameters.Direction.LEFT;
+	                state = State.TURNING_LEFT;
+	            } else {
+	                turnedDirection = Parameters.Direction.RIGHT;
+	                state = State.TURNING_RIGHT;
+	            }
+	        } else {
+	            if (turnedDirection == Parameters.Direction.RIGHT) {
+	                state = State.TURNING_RIGHT;
+	            } else {
+	                state = State.TURNING_LEFT;
+	            }
+	        }
+	    } else {
+	        if (relativeAngle > 0 && relativeAngle < Math.PI) {
+	            if (randomTurn) {
+	                turnedDirection = Parameters.Direction.LEFT;
+	                state = State.TURNING_LEFT;
+	            } else {
+	                turnedDirection = Parameters.Direction.RIGHT;
+	                state = State.TURNING_RIGHT;
+	            }
+	        } else {
+	            if (randomTurn) {
+	                turnedDirection = Parameters.Direction.RIGHT;
+	                state = State.TURNING_RIGHT;
+	            } else {
+	                turnedDirection = Parameters.Direction.LEFT;
+	                state = State.TURNING_LEFT;
+	            }
+	        }
+	    }
+	    
+	    oldAngle = myGetHeading();
+	    turningTask = true;
+	    avoidanceTimer = AVOIDANCE_DURATION;
+	}
 }
 
 //=================================================================================
@@ -276,8 +382,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
   
 
     private double avoidanceAngle = Math.PI/2;
-    private int avoidanceTimer = 0;
-    private static final int AVOIDANCE_DURATION = 10;
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
     
 	//=========================================CORE=========================================	
@@ -380,35 +484,23 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	protected void detection () {
 		// Détection des ennemis et envoi d'infos
 		freeze = false;
-	    for (IRadarResult o : detectRadar()) {
+		// Dans votre méthode principale
+		for (IRadarResult o : detectRadar()) {
 			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
 			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
-		
-			double objectRadius = o.getObjectRadius(); // Rayon de l'objet détecté
-		
-			// Vérifie si l'objet est directement devant
-			boolean isObstacleAhead = Math.abs(normalize(o.getObjectDirection() - getHeading())) < 0.5;
-		
-			// Vérification des extrémités de l'objet
-			double oX_left = oX - objectRadius;   // Bord gauche
-			double oX_right = oX + objectRadius;  // Bord droit
-			double distanceToObject = o.getObjectDistance(); // Distance centre à centre
-		
-			// Hauteur couverte par l'objet
-			double heightLeft = Math.abs(oX_left - myPos.getX());
-			double heightRight = Math.abs(oX_right - myPos.getX());
-		
-			boolean isWithinHeight = (heightLeft < 60 || heightRight < 60); // L'objet touche la hauteur de 60 mm
-			boolean isWithinDistance = distanceToObject < 100; // L'objet est dans la longueur de 100 mm
-		
-			if (isObstacleAhead && isWithinHeight && isWithinDistance) {
-				sendLogMessage("Obstacle détecté dans la trajectoire !");
-				obstacleDetected = true;
-				obstacleDirection = o.getObjectDirection();
-				initiateObstacleAvoidance();
+			if (allyPos.get(whoAmI).isAlive()) {
+			    boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
+			                                             Parameters.teamASecondaryBotRadius, o);
+			    
+			    sendLogMessage("Obstacle dans la trajectoire: " + obstacleInPath);
+			    
+			    if (obstacleInPath) {
+			        sendLogMessage("Obstacle détecté dans la trajectoire rectangulaire !");
+			        obstacleDetected = true;
+			        obstacleDirection = o.getObjectDirection();
+			        initiateObstacleAvoidance();
+			    }
 			}
-
-
 			switch (o.getObjectType()) {
 				case OpponentMainBot:
 				case OpponentSecondaryBot:
@@ -418,7 +510,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 					if (o.getObjectDistance() < 300) {
 						broadcast("MOVING_BACK " + whoAmI + " " + oX + " " + oY);
-						freeze = true;
+						//freeze = true;
 					}
 					break;
 			
@@ -478,34 +570,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	    		return;
 			}
 		}
-		//initiateObstacleAvoidance();
+		initiateObstacleAvoidance();
 	}
-	
-	private void initiateObstacleAvoidance() {
-        // Determine which way to turn based on obstacle direction
-        double relativeAngle = normalize(obstacleDirection - getHeading());
-        if (turnedDirection != null) {
-	        if (turnedDirection == Parameters.Direction.RIGHT) {
-	        	state = State.TURNING_RIGHT;
-	        }
-	        else {
-	        	 state = State.TURNING_LEFT;
-	        }
-        }
-        else if (relativeAngle > 0 && relativeAngle < Math.PI) {
-            // Obstacle is on the right, turn left
-        	turnedDirection = Parameters.Direction.RIGHT;
-        	state = State.TURNING_RIGHT;
-            //gMessage("Avoiding obstacle by turning right");
-        } else {
-            // Obstacle is on the left, turn right
-        	turnedDirection = Parameters.Direction.LEFT;
-            state = State.TURNING_LEFT;
-            //sendLogMessage("Avoiding obstacle by turning left");
-        }
-        
-        oldAngle = myGetHeading();
-        turningTask = true;
-        avoidanceTimer = AVOIDANCE_DURATION;
-    }
 }

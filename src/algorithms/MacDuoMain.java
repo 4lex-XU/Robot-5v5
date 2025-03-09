@@ -168,6 +168,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 		if (getHealth() <= 0) {
 			state = State.DEAD;
 			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
+			return;
 		}
 		
 		try {
@@ -207,73 +208,53 @@ public class MacDuoMain extends MacDuoBaseBot {
         boolean enemyDetected = false;
 
         for (IRadarResult o : detectRadar()) {
+			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
+			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
+			if (allyPos.get(whoAmI).isAlive()) {
+			    boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
+			                                             Parameters.teamAMainBotRadius, o);
+			    sendLogMessage("Obstacle dans la trajectoire: " + obstacleInPath);
+			    if (obstacleInPath) {
+			        sendLogMessage("Obstacle détecté dans la trajectoire rectangulaire !");
+			        obstacleDetected = true;
+			        obstacleDirection = o.getObjectDirection();
+			        initiateObstacleAvoidance();
+			    }
+			}		    
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
-	            double enemyX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
-	            double enemyY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
-	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	            addOrUpdateEnemy(enemyX, enemyY, o.getObjectDistance(), o.getObjectDirection(), true, o.getObjectType());
+	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
+	            addOrUpdateEnemy(oX, oY, o.getObjectDistance(), o.getObjectDirection(), true, o.getObjectType());
 	            if (!enemyDetected) {
 	            	fireOrder = true;
                     enemyDetected = true;
                 }
 	        }
 	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
-	            double wreckX=myPos.getX()+o.getObjectDistance()*Math.cos(o.getObjectDirection());
-	            double wreckY=myPos.getY()+o.getObjectDistance()*Math.sin(o.getObjectDirection());
-	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + wreckX + " " + wreckY);
-	            handleWreckMessage(new String[]{"WRECK", "", "", "", String.valueOf(wreckX), String.valueOf(wreckY)});
+	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
+	            handleWreckMessage(new String[]{"WRECK", "", "", "", String.valueOf(oX), String.valueOf(oY)});
 	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	        }
 	        
-	        // Obstacle detection for movement
-			obstacleDirection = o.getObjectDirection();
-	        if ((o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && ((isSameDirection(obstacleDirection, Parameters.NORTH) || isSameDirection(obstacleDirection, Parameters.SOUTH)))) 
-					|| detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
-				obstacleDetected = true;
-	        	initiateObstacleAvoidance();
-				//System.out.println("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
-	            //sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
-	        }
+//	        // Obstacle detection for movement
+//			obstacleDirection = o.getObjectDirection();
+//	        if ((o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && ((isSameDirection(obstacleDirection, Parameters.NORTH) || isSameDirection(obstacleDirection, Parameters.SOUTH)))) 
+//					|| detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
+//				obstacleDetected = true;
+//	        	initiateObstacleAvoidance();
+//				//System.out.println("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
+//	            //sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
+//	        }
 	    }
 	    
 	    if (enemyDetected) {
 	        state = State.FIRE;
 	        //sendLogMessage("state fire dans detection");
 	        avoidanceTimer = 0;
-	    } else if (obstacleDetected && state == State.MOVING) {
-	        initiateObstacleAvoidance();
 	    } else if (!enemyDetected && state != State.FIRE){
 	        state = State.MOVING;
 	        //sendLogMessage("state moving dans detection");
 	    }
 	}
-    
-    private void initiateObstacleAvoidance() {
-        double relativeAngle = normalize(obstacleDirection - getHeading());
-        if (turnedDirection != null) {
-	        if (turnedDirection == Parameters.Direction.RIGHT) {
-	        	state = State.TURNING_RIGHT;
-	        }
-	        else {
-	        	 state = State.TURNING_LEFT;
-	        }
-        }
-        else if (relativeAngle > 0 && relativeAngle < Math.PI) {
-            // Obstacle is on the right, turn left
-        	turnedDirection = Parameters.Direction.RIGHT;
-        	state = State.TURNING_RIGHT;
-            //gMessage("Avoiding obstacle by turning right");
-        } else {
-            // Obstacle is on the left, turn right
-        	turnedDirection = Parameters.Direction.LEFT;
-            state = State.TURNING_LEFT;
-            //sendLogMessage("Avoiding obstacle by turning left");
-        }
-        
-        oldAngle = myGetHeading();
-        turningTask = true;
-        avoidanceTimer = AVOIDANCE_DURATION;
-    }
     
     private void readMessages() {
     	//sendLogMessage("readMessages");
@@ -334,7 +315,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 				if (state != State.FIRE) {
 					rdvX = botX;
 					rdvY = botY;
-					//sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
+					sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
 				}
 			}
     	}
@@ -416,11 +397,11 @@ public class MacDuoMain extends MacDuoBaseBot {
             }
             
             if (fireOrder) {
-            	if (target.getSpeed() > 1) {
-            	    firePositionWithPrediction(target);
-            	} else {
+//            	if (target.getSpeed() > 1) {
+//            	    firePositionWithPrediction(target);
+//            	} else {
             	    firePosition(target.x, target.y);
-            	}
+            	//}
             }
         }  else {
             state = State.MOVING;
@@ -613,47 +594,170 @@ public class MacDuoMain extends MacDuoBaseBot {
 //	    }
 //	    return null;
 //	}
-
-	
 	private boolean isObstacleOnLine(double x1, double y1, double x2, double y2, double ox, double oy) {
+	    // Calcul du produit vectoriel pour trouver la distance du point à la ligne
 	    double crossProduct = Math.abs((oy - y1) * (x2 - x1) - (ox - x1) * (y2 - y1));
-	    double distanceToLine = crossProduct / Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-
-	    // On considère un obstacle si la distance à la ligne est inférieure à un seuil (ex: 30mm)
-	    return distanceToLine < 30 && isBetween(x1, x2, ox) && isBetween(y1, y2, oy);
-	}
-
-	private boolean isBetween(double a, double b, double c) {
-	    return c >= Math.min(a, b) && c <= Math.max(a, b);
+	    double lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+	    double distanceToLine = crossProduct / lineLength;
+	    
+	    // Rayon estimé des obstacles (ajustez selon votre environnement)
+	    double obstacleRadius = 30;
+	    
+	    // Vérifier si le point est entre les extrémités de la ligne et à une distance inférieure au rayon
+	    if (distanceToLine < obstacleRadius) {
+	        // Vérifier si le point est "entre" les extrémités de la ligne
+	        // Calculer la projection du point sur la ligne
+	        double dotProduct = ((ox - x1) * (x2 - x1) + (oy - y1) * (y2 - y1)) / (lineLength * lineLength);
+	        
+	        // Si la projection est entre 0 et 1, le point est entre les extrémités
+	        return dotProduct >= 0 && dotProduct <= 1;
+	    }
+	    
+	    return false;
 	}
 	
 	private void repositionForShooting(Ennemy target) {
 	    double angleToTarget = Math.atan2(target.y - myPos.getY(), target.x - myPos.getX());
-
-	    // Essayer de tourner légèrement à gauche ou à droite
-	    double leftAngle = angleToTarget + Math.toRadians(10);
-	    double rightAngle = angleToTarget - Math.toRadians(10);
-
-	    if (!isBlocked(leftAngle)) {
-	        turnTo(leftAngle);
-	        //sendLogMessage("Turning left to avoid obstacle.");
-	    } else if (!isBlocked(rightAngle)) {
-	        turnTo(rightAngle);
-	        //sendLogMessage("Turning right to avoid obstacle.");
+	    
+	    // Identifier l'obstacle qui bloque le tir
+	    double obstacleX = -1;
+	    double obstacleY = -1;
+	    
+	    // Vérifier si un allié bloque
+	    for (BotState ally : allyPos.values()) {
+	        double allyX = ally.getPosition().getX();
+	        double allyY = ally.getPosition().getY();
+	        
+	        if (allyX == myPos.getX() && allyY == myPos.getY()) {
+	            continue;
+	        }
+	        
+	        if (isObstacleOnLine(myPos.getX(), myPos.getY(), target.x, target.y, allyX, allyY)) {
+	            obstacleX = allyX;
+	            obstacleY = allyY;
+	            break;
+	        }
+	    }
+	    
+	    // Vérifier si une épave bloque
+	    if (obstacleX == -1) {
+	        for (double[] wreck : wreckPositions) {
+	            double wreckX = wreck[0];
+	            double wreckY = wreck[1];
+	            
+	            if (isObstacleOnLine(myPos.getX(), myPos.getY(), target.x, target.y, wreckX, wreckY)) {
+	                obstacleX = wreckX;
+	                obstacleY = wreckY;
+	                break;
+	            }
+	        }
+	    }
+	    
+	    // Si on a identifié un obstacle
+	    if (obstacleX != -1) {
+	        // Calculer le vecteur robot-obstacle
+	        double toObstacleX = obstacleX - myPos.getX();
+	        double toObstacleY = obstacleY - myPos.getY();
+	        
+	        // Normaliser ce vecteur
+	        double distance = Math.sqrt(toObstacleX * toObstacleX + toObstacleY * toObstacleY);
+	        toObstacleX /= distance;
+	        toObstacleY /= distance;
+	        
+	        // Créer un vecteur perpendiculaire (deux options possibles)
+	        double perpX1 = -toObstacleY;
+	        double perpY1 = toObstacleX;
+	        double perpX2 = toObstacleY;
+	        double perpY2 = -toObstacleX;
+	        
+	        // Calculer les deux positions potentielles (à gauche et à droite de l'obstacle)
+	        double moveDistance = 60; // Distance de déplacement
+	        double posX1 = myPos.getX() + perpX1 * moveDistance;
+	        double posY1 = myPos.getY() + perpY1 * moveDistance;
+	        double posX2 = myPos.getX() + perpX2 * moveDistance;
+	        double posY2 = myPos.getY() + perpY2 * moveDistance;
+	        
+	        // Déterminer quelle position offre le meilleur angle vers la cible
+	        double angle1ToTarget = Math.atan2(target.y - posY1, target.x - posX1);
+	        double angle2ToTarget = Math.atan2(target.y - posY2, target.x - posX2);
+	        
+	        // Vérifier quelle position donne une ligne de tir claire
+	        boolean pos1Clear = !isPositionBlocked(posX1, posY1, target.x, target.y);
+	        boolean pos2Clear = !isPositionBlocked(posX2, posY2, target.x, target.y);
+	        
+	        double bestPerpX, bestPerpY;
+	        double bestAngle;
+	        
+	        if (pos1Clear && pos2Clear) {
+	            // Les deux positions sont claires, choisir celle qui est la plus proche de notre direction actuelle
+	            double currentAngle = getHeading();
+	            double diff1 = Math.abs(normalize(angle1ToTarget - currentAngle));
+	            double diff2 = Math.abs(normalize(angle2ToTarget - currentAngle));
+	            
+	            if (diff1 < diff2) {
+	                bestPerpX = perpX1;
+	                bestPerpY = perpY1;
+	                bestAngle = Math.atan2(perpY1, perpX1);
+	            } else {
+	                bestPerpX = perpX2;
+	                bestPerpY = perpY2;
+	                bestAngle = Math.atan2(perpY2, perpX2);
+	            }
+	        } else if (pos1Clear) {
+	            bestPerpX = perpX1;
+	            bestPerpY = perpY1;
+	            bestAngle = Math.atan2(perpY1, perpX1);
+	        } else if (pos2Clear) {
+	            bestPerpX = perpX2;
+	            bestPerpY = perpY2;
+	            bestAngle = Math.atan2(perpY2, perpX2);
+	        } else {
+	            // Aucune position ne donne une ligne de tir claire
+	            // Se déplacer simplement perpendiculairement à l'obstacle
+	            bestPerpX = perpX1; // Choix arbitraire
+	            bestPerpY = perpY1;
+	            bestAngle = Math.atan2(perpY1, perpX1);
+	        }
+	        
+	        // Se tourner et se déplacer vers la position choisie
+	        turnTo(bestAngle);
+	        myMove(true);
+	        
+	        sendLogMessage("Repositioning perpendicular to obstacle for clear shot");
 	    } else {
-	        //sendLogMessage("No clear shot, moving slightly.");
-	        myMove(true);  // Avancer légèrement pour un meilleur angle
+	        // Pas d'obstacle identifié (cas anormal)
+	        sendLogMessage("No obstacle identified but shot is blocked. Moving randomly.");
+	        turnTo(angleToTarget + Math.PI/2);
+	        myMove(true);
 	    }
 	}
 
-	private boolean isBlocked(double angle) {
-	    for (double[] wreck : wreckPositions) {
-	        double wreckX = wreck[0];
-	        double wreckY = wreck[1];
-	        if (isObstacleOnLine(myPos.getX(), myPos.getY(), myPos.getX() + Math.cos(angle) * 300, myPos.getY() + Math.sin(angle) * 300, wreckX, wreckY)) {
+	// Fonction auxiliaire pour vérifier si une position donne une ligne de tir claire
+	private boolean isPositionBlocked(double fromX, double fromY, double toX, double toY) {
+	    // Vérifier les alliés
+	    for (BotState ally : allyPos.values()) {
+	        double allyX = ally.getPosition().getX();
+	        double allyY = ally.getPosition().getY();
+	        
+	        if (allyX == myPos.getX() && allyY == myPos.getY()) {
+	            continue;
+	        }
+	        
+	        if (isObstacleOnLine(fromX, fromY, toX, toY, allyX, allyY)) {
 	            return true;
 	        }
 	    }
+	    
+	    // Vérifier les épaves
+	    for (double[] wreck : wreckPositions) {
+	        double wreckX = wreck[0];
+	        double wreckY = wreck[1];
+	        
+	        if (isObstacleOnLine(fromX, fromY, toX, toY, wreckX, wreckY)) {
+	            return true;
+	        }
+	    }
+	    
 	    return false;
 	}
 }
