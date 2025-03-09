@@ -44,6 +44,7 @@ class Position {
 	public void setY(double y) {this.y = y;}
 	public double getX() {return x;}
 	public double getY() {return y;}
+	public String toString() { return "X : " + x + "; Y : " + y;}
 	
 }
 
@@ -183,7 +184,7 @@ abstract class MacDuoBaseBot extends Brain {
 	}
 	
 	protected double distance(Position p1, Position p2) {
-	    return Math.sqrt(Math.pow(p1.getX() - p1.getX(), 2) + Math.pow(p2.getY() - p1.getY(), 2));
+	    return Math.sqrt(Math.pow(p2.getX() - p1.getX(), 2) + Math.pow(p2.getY() - p1.getY(), 2));
 	}
 	
 	protected double getCurrentSpeed() throws Exception {
@@ -300,11 +301,9 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		readMessages();
 		freeze = true;
 
-		// J'avance si au moins un allié est à moins de 600 de distance
+		// J'avance si au moins un allié est à moins de 500 de distance
 		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
 			double distance = distance(entry.getValue().getPosition(), myPos);
-			System.out.println(entry.getKey()+" "+ distance);
-			System.out.println(entry.getValue().getPosition().getX()+" ; "+entry.getValue().getPosition().getY());
 
 			if (entry.getValue().isAlive() && distance < 500 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
 				freeze = false;
