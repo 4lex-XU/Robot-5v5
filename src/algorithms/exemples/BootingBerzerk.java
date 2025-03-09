@@ -103,13 +103,13 @@ public class BootingBerzerk extends Brain {
       if (endTaskCounter<0) {
         for (IRadarResult r : radarResults) {
           if (r.getObjectType()==IRadarResult.Types.OpponentMainBot) {
-            fire(r.getObjectDirection());
+            //fire(r.getObjectDirection());
             lastSeenDirection=r.getObjectDirection();
             berzerkInerty=0;
             return;
           }
         }
-        fire(lastSeenDirection);
+        //fire(lastSeenDirection);
         berzerkInerty++;
         endTaskCounter=21;
         return;
@@ -134,7 +134,7 @@ public class BootingBerzerk extends Brain {
           berzerk=true;
           back=(Math.cos(getHeading()-r.getObjectDirection())>0);
           endTaskCounter=21;
-          fire(r.getObjectDirection());
+          //fire(r.getObjectDirection());
           lastSeenDirection=r.getObjectDirection();
           berzerkTurning=true;
           endTaskDirection=lastSeenDirection;
@@ -146,7 +146,7 @@ public class BootingBerzerk extends Brain {
       }
       for (IRadarResult r : radarResults) {
         if (r.getObjectType()==IRadarResult.Types.OpponentSecondaryBot) {
-          fire(r.getObjectDirection());
+          //fire(r.getObjectDirection());
           return;
         }
       }
