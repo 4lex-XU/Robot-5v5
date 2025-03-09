@@ -2,6 +2,7 @@ package algorithms;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -45,6 +46,8 @@ class Position {
 	public double getY() {return y;}
 	
 }
+
+
 //====================================================================================
 //====================================ABSTRACT BOT====================================
 //====================================================================================
@@ -78,7 +81,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected Map<String, BotState> allyPos = new HashMap<>();	// Stocker la position des alliés
 	protected Map<String, Double[]> wreckPos = new HashMap<>();	// Stocker la position des débris
-	
+    
 	public MacDuoBaseBot() {
 		super();
 		allyPos.put(NBOT, new BotState());
@@ -313,6 +316,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
+			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
 		}
 		
 		try {
@@ -353,7 +357,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	            double enemyX=myPos.getX()+o.getObjectDistance()*Math.cos(o.getObjectDirection());
 	            double enemyY=myPos.getY()+o.getObjectDistance()*Math.sin(o.getObjectDirection());
 	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+	            sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
             	if (o.getObjectDistance() < 300) {
     	            broadcast("MOVING_BACK " + whoAmI + " " + enemyX + " " + enemyY);
             		state = State.MOVING_BACK;
