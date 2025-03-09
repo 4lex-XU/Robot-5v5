@@ -94,7 +94,7 @@ public class MacDuoMain extends MacDuoBaseBot {
     private int avoidanceTimer = 0;
     private static final int AVOIDANCE_DURATION = 10;
 
-    
+    private boolean following;
 	//=========================================CORE=========================================	
 
 	public MacDuoMain () { super();}
@@ -140,6 +140,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    state = State.FIRST_RDV;
 	    rdv_point = true;
 	    oldAngle = myGetHeading();
+		following = true;
     }
     
     @Override
@@ -177,7 +178,8 @@ public class MacDuoMain extends MacDuoBaseBot {
 					}
 					break;
 				case MOVING:
-					reach_rdv_point(rdvX, rdvY);
+					if(following || allyPos.get(NBOT).isAlive()) reach_rdv_point(rdvX, rdvY);
+					else myMove(true);
 					break;
 				case MOVING_BACK:
 					myMove(false);
@@ -236,13 +238,13 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    
 	    if (enemyDetected) {
 	        state = State.FIRE;
-	        sendLogMessage("state fire dans detection");
+	        //sendLogMessage("state fire dans detection");
 	        avoidanceTimer = 0;
 	    } else if (obstacleDetected && state == State.MOVING) {
 	        initiateObstacleAvoidance();
 	    } else if (!enemyDetected && state != State.FIRE){
 	        state = State.MOVING;
-	        sendLogMessage("state moving dans detection");
+	        //sendLogMessage("state moving dans detection");
 	    }
 	}
     
@@ -274,14 +276,16 @@ public class MacDuoMain extends MacDuoBaseBot {
     }
     
     private void readMessages() {
-    	sendLogMessage("readMessages");
+    	//sendLogMessage("readMessages");
         ArrayList<String> messages = fetchAllMessages();
+		ArrayList<String> ennemyMessages = new ArrayList();
+
         for (String msg : messages) {
             String[] parts = msg.split(" ");
             switch (parts[0]) {
             	case "ENEMY":
-            		sendLogMessage("ENEMY handleEnemyMessage");
-	                handleEnemyMessage(parts);
+            		//sendLogMessage("ENEMY handleEnemyMessage");
+					ennemyMessages.add(msg);
 	                break;
                 case "WRECK" :
                 	handleWreckMessage(parts);
@@ -289,21 +293,31 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            case "POS":
 	            	handlePosMessage(parts);
 	            	break;
-	            case "MOVING_BACK":
+	           /* case "MOVING_BACK":
 	            	double enemyX = Double.parseDouble(parts[2]);
 	                double enemyY = Double.parseDouble(parts[3]);
 	            	double distance = Math.sqrt(Math.pow(enemyX - myPos.getX(), 2) + Math.pow(enemyY - myPos.getY(), 2));
 	            	if (distance < 700){
 	            		state = State.MOVING_BACK;
-	        	        sendLogMessage("state moving back dans readMessages");
+	        	        //sendLogMessage("state moving back dans readMessages");
 	            		myMove(false);
 	            	}
-	            	break;
-                case "SCOUT_DOWN_A":
-                case "SCOUT_DOWN_B":
-                    break;
+	            	break;*/
+				case "DEAD":
+					allyPos.put(parts[1], new BotState( allyPos.get(parts[1]).getPosition().getX(), 
+														allyPos.get(parts[1]).getPosition().getY(), 
+														false));
+					if (parts[1].equals(SBOT)) {
+						following = false;
+					}
+					break;
             }
         }
+
+		for (String msg : ennemyMessages) {
+			String[] parts = msg.split(" ");
+			handleEnemyMessage(parts);
+		}
     }
 
     private void handlePosMessage(String[] parts) {
@@ -316,7 +330,13 @@ public class MacDuoMain extends MacDuoBaseBot {
                     rdvY = botY;
                     //sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
                 }
-            }
+            } else if (!allyPos.get(SBOT).isAlive() && parts[1].equals("NBOT")) {
+				if (state != State.FIRE) {
+					rdvX = botX;
+					rdvY = botY;
+					//sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
+				}
+			}
     	}
     }
     
@@ -333,13 +353,13 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    }
 	    if (!exists) {
 	        wreckPositions.add(new double[]{wreckX, wreckY});
-	        sendLogMessage("New wreck detected at (" + (int) wreckX + ", " + (int) wreckY + ")");
+	        //sendLogMessage("New wreck detected at (" + (int) wreckX + ", " + (int) wreckY + ")");
 	    }
 	    enemyTargets.removeIf(enemy -> Math.abs(enemy.x - wreckX) < 50 && Math.abs(enemy.y - wreckY) < 50);
 	}
     
     private void handleEnemyMessage(String[] parts) {
-    	sendLogMessage("handleEnemyMessage");
+    	//sendLogMessage("handleEnemyMessage");
     	state = State.FIRE;
     	fireOrder = true;
         double enemyX = Double.parseDouble(parts[4]);
@@ -363,14 +383,14 @@ public class MacDuoMain extends MacDuoBaseBot {
             if (lastTarget != null && lastTarget.equals(target)) {
                 fireStreak++;
                 if (fireStreak >= MAX_FIRE_STREAK) {
-                    sendLogMessage("Target stuck for too long, switching target.");
+                    //sendLogMessage("Target stuck for too long, switching target.");
                     enemyTargets.remove(target);
                     fireStreak = 0;
                     lastTarget = null;
 
                     target = chooseTarget();
                     if (target == null) {
-                        sendLogMessage("No more targets, switching to MOVING.");
+                        //sendLogMessage("No more targets, switching to MOVING.");
                         state = State.MOVING; 
                         fireOrder = false;
                         return;
@@ -384,7 +404,7 @@ public class MacDuoMain extends MacDuoBaseBot {
             }
 
             if (!enemyTargets.contains(target)) {
-                sendLogMessage("Target eliminated, stopping fire.");
+                //sendLogMessage("Target eliminated, stopping fire.");
                 fireOrder = false;
                 state = State.MOVING;
                 return;
@@ -416,13 +436,13 @@ public class MacDuoMain extends MacDuoBaseBot {
 				avoidanceTimer--;
 				if (avoidanceTimer == 0) {
 					state = State.MOVING;
-					 sendLogMessage("state moving dans myMove"); // Back to normal movement when avoidance complete
+					 //sendLogMessage("state moving dans myMove"); // Back to normal movement when avoidance complete
 				}
 				return;
 			}
 			
 			// Regular movement when no active avoidance
-			if (!rdv_point && (obstacleDetected || detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING)) {
+			if (detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING) {
 				initiateObstacleAvoidance();
 				return;
 			}
@@ -500,7 +520,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	
 	private Ennemy chooseTarget() {
 	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
-	    sendLogMessage("choosetarget target len : " + enemyTargets.size());
+	    //sendLogMessage("choosetarget target len : " + enemyTargets.size());
 	    // Parcours les ennemis et choisit celui qui est le plus proche sans allié sur la trajectoire
 	    for (Ennemy enemy : enemyTargets) {
 	        boolean allyInTheWay = false;
@@ -515,19 +535,19 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            double enemyDirection = Math.atan2(enemy.y - myPos.getY(), enemy.x - myPos.getX());
 	            double distEnemyToAlly = perpendicularDistance(allyX, allyY, myPos.getX(), myPos.getY(), enemy.x, enemy.y);
 
-	            //boolean isSameLine = isRoughlySameDirection(allyDirection, enemyDirection);
+	            //boolean isSameLine = isSameDirection(allyDirection, enemyDirection);
 	            // Vérifie si l'allié est **entre** le robot et l'ennemi
 	            double distAlly = Math.sqrt(Math.pow(allyX - myPos.getX(), 2) + Math.pow(allyY - myPos.getY(), 2));
 	            double distEnemy = enemy.distance;
 
 	            if (distEnemyToAlly < 30. && distAlly < distEnemy) {
 	            	allyInTheWay = true;
-	                sendLogMessage("(" + allyX + ", " + allyY + ") aligned with enemy at (" + enemy.x + ", " + enemy.y + ")");                  
+	                //sendLogMessage("(" + allyX + ", " + allyY + ") aligned with enemy at (" + enemy.x + ", " + enemy.y + ")");                  
 	                break;
 	            }
 	        }
 	        if (!allyInTheWay) {
-	        	sendLogMessage("ennemy");
+	        	//sendLogMessage("ennemy");
 	            return enemy;
 	        }
 	    }
@@ -542,17 +562,17 @@ public class MacDuoMain extends MacDuoBaseBot {
 	}
 	
 	private void moveTowardsTarget(Ennemy target) {
-	    sendLogMessage("moveTowardsTarget | Current Pos: (" + myPos.getX() + ", " + myPos.getY() + ") | Target Pos: (" + target.x + ", " + target.y + ")");
+	    //sendLogMessage("moveTowardsTarget | Current Pos: (" + myPos.getX() + ", " + myPos.getY() + ") | Target Pos: (" + target.x + ", " + target.y + ")");
 
 	    double angleToTarget = Math.atan2(target.y - myPos.getY(), target.x - myPos.getX());
 	    double currentHeading = getHeading();
 
 	    if (!isRoughlySameDirection(currentHeading, angleToTarget)) {
-	        sendLogMessage("Turning towards target | Current Heading: " + Math.toDegrees(currentHeading) + "° | Target Angle: " + Math.toDegrees(angleToTarget) + "°");
+	        //sendLogMessage("Turning towards target | Current Heading: " + Math.toDegrees(currentHeading) + "° | Target Angle: " + Math.toDegrees(angleToTarget) + "°");
 	        turnTo(angleToTarget);  
 	        return;
 	    }
-	    sendLogMessage("Aligned with target. Moving forward...");
+	    //sendLogMessage("Aligned with target. Moving forward...");
 	    myMove(true);
 	}
 	
@@ -616,12 +636,12 @@ public class MacDuoMain extends MacDuoBaseBot {
 
 	    if (!isBlocked(leftAngle)) {
 	        turnTo(leftAngle);
-	        sendLogMessage("Turning left to avoid obstacle.");
+	        //sendLogMessage("Turning left to avoid obstacle.");
 	    } else if (!isBlocked(rightAngle)) {
 	        turnTo(rightAngle);
-	        sendLogMessage("Turning right to avoid obstacle.");
+	        //sendLogMessage("Turning right to avoid obstacle.");
 	    } else {
-	        sendLogMessage("No clear shot, moving slightly.");
+	        //sendLogMessage("No clear shot, moving slightly.");
 	        myMove(true);  // Avancer légèrement pour un meilleur angle
 	    }
 	}

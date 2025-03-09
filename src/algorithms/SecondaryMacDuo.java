@@ -97,6 +97,8 @@ abstract class MacDuoBaseBot extends Brain {
 	protected State state;
 	protected boolean isMoving;
 	protected double oldAngle;
+	protected double obstacleDirection = 0;
+	protected Parameters.Direction turnedDirection;
 	
 	
 	protected Map<String, BotState> allyPos = new HashMap<>();	// Stocker la position des alliés
@@ -271,12 +273,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
     private double targetX, targetY; 
     
     private boolean obstacleDetected = false;
-    private double obstacleDirection = 0;
+  
+
     private double avoidanceAngle = Math.PI/2;
     private int avoidanceTimer = 0;
     private static final int AVOIDANCE_DURATION = 10;
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
-    private Parameters.Direction turnedDirection;
     
 	//=========================================CORE=========================================	
 	public SecondaryMacDuo() {super();}
@@ -341,6 +343,8 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		if (getHealth() <= 0) {
 			state = State.DEAD;
 			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
+			broadcast("DEAD " + whoAmI);
+			return;
 		}
 		
 		try {
@@ -377,24 +381,54 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		// Détection des ennemis et envoi d'infos
 		freeze = false;
 	    for (IRadarResult o : detectRadar()) {
-	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
-	            // Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
-	            double enemyX=myPos.getX()+o.getObjectDistance()*Math.cos(o.getObjectDirection());
-	            double enemyY=myPos.getY()+o.getObjectDistance()*Math.sin(o.getObjectDirection());
-	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	            sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
-            	if (o.getObjectDistance() < 300) {
-    	            broadcast("MOVING_BACK " + whoAmI + " " + enemyX + " " + enemyY);
-    	            freeze = true;
-            	}
-	          
-	        }
-	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
-	            double enemyX=myPos.getX()+o.getObjectDistance()*Math.cos(o.getObjectDirection());
-	            double enemyY=myPos.getY()+o.getObjectDistance()*Math.sin(o.getObjectDirection());
-	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	        }
+			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
+			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
+		
+			double objectRadius = o.getObjectRadius(); // Rayon de l'objet détecté
+		
+			// Vérifie si l'objet est directement devant
+			boolean isObstacleAhead = Math.abs(normalize(o.getObjectDirection() - getHeading())) < 0.5;
+		
+			// Vérification des extrémités de l'objet
+			double oX_left = oX - objectRadius;   // Bord gauche
+			double oX_right = oX + objectRadius;  // Bord droit
+			double distanceToObject = o.getObjectDistance(); // Distance centre à centre
+		
+			// Hauteur couverte par l'objet
+			double heightLeft = Math.abs(oX_left - myPos.getX());
+			double heightRight = Math.abs(oX_right - myPos.getX());
+		
+			boolean isWithinHeight = (heightLeft < 60 || heightRight < 60); // L'objet touche la hauteur de 60 mm
+			boolean isWithinDistance = distanceToObject < 100; // L'objet est dans la longueur de 100 mm
+		
+			if (isObstacleAhead && isWithinHeight && isWithinDistance) {
+				sendLogMessage("Obstacle détecté dans la trajectoire !");
+				obstacleDetected = true;
+				obstacleDirection = o.getObjectDirection();
+				initiateObstacleAvoidance();
+			}
+
+
+			switch (o.getObjectType()) {
+				case OpponentMainBot:
+				case OpponentSecondaryBot:
+					// Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
+					
+					broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
+					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+					if (o.getObjectDistance() < 300) {
+						broadcast("MOVING_BACK " + whoAmI + " " + oX + " " + oY);
+						freeze = true;
+					}
+					break;
+			
+				case Wreck:
+					broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
+					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
+					break;
+				default:
+					break;
+			}
 	    	
 	    }		
 	}
@@ -444,7 +478,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	    		return;
 			}
 		}
-		initiateObstacleAvoidance();
+		//initiateObstacleAvoidance();
 	}
 	
 	private void initiateObstacleAvoidance() {
