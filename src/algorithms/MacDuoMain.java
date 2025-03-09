@@ -376,6 +376,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 				return;
 			}
 		}
+		initiateObstacleAvoidance();
 	}
 	
 	private void firePosition(double x, double y) {
