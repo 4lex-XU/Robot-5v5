@@ -258,7 +258,7 @@ abstract class MacDuoBaseBot extends Brain {
 	protected boolean isPointInTrajectory(double robotX, double robotY, double robotHeading, double pointX, double pointY) {
 		// Dimensions de la zone
 		double pathLength = BOT_RADIUS*2.5; // Longueur de la trajectoire
-		double pathWidth = 52;   // Largeur totale (26 mm de chaque côté)
+		double pathWidth = 60;   // Largeur totale (26 mm de chaque côté)
 	
 		// Calcul du vecteur direction du robot
 		double dirX = Math.cos(robotHeading);

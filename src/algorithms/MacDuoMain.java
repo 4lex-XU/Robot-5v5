@@ -210,7 +210,7 @@ public class MacDuoMain extends MacDuoBaseBot {
         for (IRadarResult o : detectRadar()) {
 			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
 			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
-			if (allyPos.get(whoAmI).isAlive()) {
+			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
 
 
 			    /*boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
@@ -355,7 +355,6 @@ public class MacDuoMain extends MacDuoBaseBot {
     
     private void handleEnemyMessage(String[] parts) {
     	//sendLogMessage("handleEnemyMessage");
-    	state = State.FIRE;
     	fireOrder = true;
         double enemyX = Double.parseDouble(parts[4]);
         double enemyY = Double.parseDouble(parts[5]);
@@ -374,6 +373,8 @@ public class MacDuoMain extends MacDuoBaseBot {
                 moveTowardsTarget(target);
                 return; 
             }
+			// passe en mode fire si un ennemi est à porter
+			state = State.FIRE;
 
             if (lastTarget != null && lastTarget.equals(target)) {
                 fireStreak++;
