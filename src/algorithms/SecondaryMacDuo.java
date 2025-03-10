@@ -254,7 +254,76 @@ abstract class MacDuoBaseBot extends Brain {
 	    }
 	    return bestAngle;
 	}
+
+	protected boolean isPointInTrajectory(double robotX, double robotY, double robotHeading, double pointX, double pointY) {
+		// Dimensions de la zone
+		double pathLength = BOT_RADIUS*2.5; // Longueur de la trajectoire
+		double pathWidth = 52;   // Largeur totale (26 mm de chaque côté)
 	
+		// Calcul du vecteur direction du robot
+		double dirX = Math.cos(robotHeading);
+		double dirY = Math.sin(robotHeading);
+	
+		// Calcul des coins de la zone
+		double halfWidth = pathWidth / 2;
+	
+		// Centre avant et arrière
+		double frontX = robotX + pathLength * dirX;
+		double frontY = robotY + pathLength * dirY;
+		double backX = robotX;
+		double backY = robotY;
+	
+		// Vecteur perpendiculaire pour déterminer la largeur de la zone
+		double perpX = -dirY;
+		double perpY = dirX;
+	
+		// Coins du rectangle de la trajectoire
+		double ALX = backX + halfWidth * perpX;  // Arrière gauche
+		double ALY = backY + halfWidth * perpY;
+		double ARX = backX - halfWidth * perpX;  // Arrière droit
+		double ARY = backY - halfWidth * perpY;
+		double PLX = frontX + halfWidth * perpX; // Avant gauche
+		double PLY = frontY + halfWidth * perpY;
+		double PRX = frontX - halfWidth * perpX; // Avant droit
+		double PRY = frontY - halfWidth * perpY;
+	
+		// Vérifier si le point est dans le rectangle
+		return isPointInRectangle(pointX, pointY, ALX, ALY, ARX, ARY, PLX, PLY, PRX, PRY);
+	}
+
+	protected boolean isPointInRectangle(double Px, double Py, double ALX, double ALY, double ARX, double ARY, 
+                                     double PLX, double PLY, double PRX, double PRY) {
+		// Produit scalaire pour vérifier si le point est dans la zone
+		double APx = Px - ALX;
+		double APy = Py - ALY;
+		double ABx = ARX - ALX;
+		double ABy = ARY - ALY;
+		double ADx = PLX - ALX;
+		double ADy = PLY - ALY;
+
+		double dotAB = APx * ABx + APy * ABy;
+		double dotAD = APx * ADx + APy * ADy;
+		double dotAB_AB = ABx * ABx + ABy * ABy;
+		double dotAD_AD = ADx * ADx + ADy * ADy;
+
+		return (0 <= dotAB && dotAB <= dotAB_AB) && (0 <= dotAD && dotAD <= dotAD_AD);
+	}
+	
+	protected Position[] getObstacleCorners(IRadarResult obstacle, double robotX, double robotY) {
+		// Position du centre de l'obstacle
+		double obstacleX = robotX + obstacle.getObjectDistance() * Math.cos(obstacle.getObjectDirection());
+		double obstacleY = robotY + obstacle.getObjectDistance() * Math.sin(obstacle.getObjectDirection());
+		double obstacleRadius = obstacle.getObjectRadius();
+	
+		// Calcul des coins du rectangle englobant
+		Position topLeft = new Position(obstacleX - obstacleRadius, obstacleY + obstacleRadius);
+		Position topRight = new Position(obstacleX + obstacleRadius, obstacleY + obstacleRadius);
+		Position bottomLeft = new Position(obstacleX - obstacleRadius, obstacleY - obstacleRadius);
+		Position bottomRight = new Position(obstacleX + obstacleRadius, obstacleY - obstacleRadius);
+	
+		return new Position[]{topLeft, topRight, bottomLeft, bottomRight};
+	}
+
 	protected boolean isObstacleInPath(double robotX, double robotY, double robotHeading, double robotRadius, IRadarResult obstacle) {
 		// Longueur de la trajectoire à vérifier
 		double pathLength = 100;
@@ -277,7 +346,7 @@ abstract class MacDuoBaseBot extends Brain {
 			double distance = Math.sqrt(Math.pow(checkX - obstacleX, 2) + Math.pow(checkY - obstacleY, 2));
 			
 			// Si la distance est inférieure à la somme des rayons, il y a collision
-			if (distance < (robotRadius + obstacleRadius)) {
+			if (distance < (robotRadius)) {
 				return true;
 			}
 		}
@@ -430,7 +499,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		detection();
 		readMessages();
 		
-		isShooterAround = false;
+		isShooterAround = true;
 
 		// J'avance si au moins un allié est à moins de 500 de distance
 		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
@@ -489,9 +558,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
 			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
 			if (allyPos.get(whoAmI).isAlive()) {
-			    boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
-			                                             Parameters.teamASecondaryBotRadius, o);
-			    
+			    /*boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), Parameters.teamASecondaryBotRadius, o);
 			    sendLogMessage("Obstacle dans la trajectoire: " + obstacleInPath);
 			    
 			    if (obstacleInPath) {
@@ -499,6 +566,18 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 			        obstacleDetected = true;
 			        obstacleDirection = o.getObjectDirection();
 			        initiateObstacleAvoidance();
+			    }*/
+
+				for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+			        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
+					//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+
+			        if (obstacleInPath) {
+			            sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
+			            obstacleDetected = true;
+			            obstacleDirection = o.getObjectDirection();
+			            initiateObstacleAvoidance();
+			        }
 			    }
 			}
 			switch (o.getObjectType()) {
