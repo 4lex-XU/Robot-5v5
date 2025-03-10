@@ -3,6 +3,8 @@ package algorithms;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import algorithms.MacDuoBaseBot.State;
 import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.IRadarResult.Types;
@@ -101,7 +103,8 @@ public class MacDuoMain extends MacDuoBaseBot {
     
     @Override
     public void activate() {
-		isTeamA = isHeading(Parameters.EAST);
+		isTeamA = (getHeading() == Parameters.EAST);
+		System.out.println(isTeamA);
 
     	boolean top = false;
     	boolean bottom = false;
@@ -160,7 +163,6 @@ public class MacDuoMain extends MacDuoBaseBot {
     	detection();
 		if (state == State.FIRE) {
 			handleFire();
-			return;
 		}
 		readMessages();
 		if (freeze) return;
@@ -178,13 +180,38 @@ public class MacDuoMain extends MacDuoBaseBot {
 						reach_rdv_point(rdvX, rdvY);
 					}
 					break;
-				case MOVING:
-					if(following || allyPos.get(NBOT).isAlive()) reach_rdv_point(rdvX, rdvY);
-					else myMove(true);
+				case MOVING:			
+					if((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) reach_rdv_point(rdvX, rdvY);
+					else {
+						double dirX = Math.cos(getHeading()); 
+					    double dirY = Math.sin(getHeading()); 
+
+					    // Vérifie si on a atteint la cible en tenant compte de la direction
+					    boolean reachedTargetX = (dirX > 0) ? (myPos.getX() <= targetX) : (myPos.getX() >= targetX);
+					    boolean reachedTargetY = (dirY > 0) ? (myPos.getY() <= targetY) : (myPos.getY() >= targetY);
+
+					    if (!reachedTargetX || !reachedTargetY) {
+					        myMove(true);
+					    } else {
+					    	isShooterAvoiding = false;
+					    }
+					}
 					break;
 				case MOVING_BACK:
-					myMove(false);
-					break;
+					double dirX = -Math.cos(getHeading()); // Négatif car on recule
+				    double dirY = -Math.sin(getHeading()); 
+
+				    // Vérifie si on a atteint la cible en tenant compte de la direction
+				    boolean reachedTargetX = (dirX > 0) ? (myPos.getX() >= targetX) : (myPos.getX() <= targetX);
+				    boolean reachedTargetY = (dirY > 0) ? (myPos.getY() >= targetY) : (myPos.getY() <= targetY);
+
+				    // Continue à reculer tant que l'on n'a pas atteint la cible
+				    if (!reachedTargetX || !reachedTargetY) {
+				        myMove(false);
+				    } else {
+				    	initiateObstacleAvoidance();
+				    }
+				    break;
 				case TURNING_LEFT:
 					turnLeft();
 					break;
@@ -211,29 +238,35 @@ public class MacDuoMain extends MacDuoBaseBot {
 			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
 			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
 			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
-
-
-			    /*boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
-			                                             Parameters.teamAMainBotRadius, o);
-			    sendLogMessage("Obstacle dans la trajectoire: " + obstacleInPath);
-			    if (obstacleInPath) {
-			        sendLogMessage("Obstacle détecté dans la trajectoire rectangulaire !");
-			        obstacleDetected = true;
-			        obstacleDirection = o.getObjectDirection();
-			        initiateObstacleAvoidance();
-			    }*/
-
-				for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-			        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
-					//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
-
-			        if (obstacleInPath) {
-			            sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
-			            obstacleDetected = true;
-			            obstacleDirection = o.getObjectDirection();
-			            initiateObstacleAvoidance();
-			        }
-			    }
+				
+				if (state == State.MOVING_BACK) {
+					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
+						System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+	
+				        if (obstacleInPath) {
+				            //sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
+				            System.out.println("Obstacle détecté");
+				            obstacleDetected = true;
+				            obstacleDirection = o.getObjectDirection();
+				            initiateObstacleAvoidance();
+				        } 
+				    }
+				} 
+				else {
+					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
+						System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+	
+				        if (obstacleInPath) {
+				            //sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
+				            System.out.println("Obstacle détecté");
+				            obstacleDetected = true;
+				            obstacleDirection = o.getObjectDirection();
+				            initiateObstacleAvoidance();
+				        } 
+				    }
+				}
 			}		    
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
 	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
@@ -370,7 +403,8 @@ public class MacDuoMain extends MacDuoBaseBot {
         Ennemy target = chooseTarget();
         if (target != null) {
             if (target.distance > 990) {
-                moveTowardsTarget(target);
+                //moveTowardsTarget(target);
+            	state = State.MOVING;
                 return; 
             }
 			// passe en mode fire si un ennemi est à porter
@@ -424,52 +458,6 @@ public class MacDuoMain extends MacDuoBaseBot {
             fireOrder = false;
         }
     }
-
-	protected void myMove(boolean forward) {
-		if (forward) {
-			// If we're in avoidance mode
-			if (avoidanceTimer > 0) {
-				avoidanceTimer--;
-				if (avoidanceTimer == 0) {
-					state = State.MOVING;
-					 //sendLogMessage("state moving dans myMove"); // Back to normal movement when avoidance complete
-				}
-				return;
-			}
-			
-			// Regular movement when no active avoidance
-			if (detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING) {
-				initiateObstacleAvoidance();
-				return;
-			}
-			
-			double myPredictedX = myPos.getX() + Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
-			double myPredictedY = myPos.getY() + Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
-
-			// évite de se bloquer dans les murs
-			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
-				move(); 
-				myPos.setX(myPredictedX);
-				myPos.setY(myPredictedY);
-				sendMyPosition();
-				return;
-			}
-		} else {
-			// Backward movement
-			double myPredictedX = myPos.getX() - Math.cos(getHeading()) * Parameters.teamAMainBotSpeed;
-			double myPredictedY = myPos.getY() - Math.sin(getHeading()) * Parameters.teamAMainBotSpeed;
-
-			// évite de se bloquer dans les murs
-			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
-				moveBack();
-				myPos.setX(myPredictedX);
-				myPos.setY(myPredictedY);
-				sendMyPosition();
-				return;
-			}
-		}
-		initiateObstacleAvoidance();
-	}
 	
 	private void firePosition(double x, double y) {
 	    double angle = Math.atan2(y - myPos.getY(), x - myPos.getX());
@@ -568,8 +556,9 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        turnTo(angleToTarget);  
 	        return;
 	    }
-	    //sendLogMessage("Aligned with target. Moving forward...");
+	    sendLogMessage("Aligned with target. Moving forward...");
 	    myMove(true);
+	    state = State.MOVING;
 	}
 	
 //	private Ennemy chooseTarget() {
