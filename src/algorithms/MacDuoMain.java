@@ -211,7 +211,9 @@ public class MacDuoMain extends MacDuoBaseBot {
 			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
 			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
 			if (allyPos.get(whoAmI).isAlive()) {
-			    boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
+
+
+			    /*boolean obstacleInPath = isObstacleInPath(myPos.getX(), myPos.getY(), getHeading(), 
 			                                             Parameters.teamAMainBotRadius, o);
 			    sendLogMessage("Obstacle dans la trajectoire: " + obstacleInPath);
 			    if (obstacleInPath) {
@@ -219,6 +221,18 @@ public class MacDuoMain extends MacDuoBaseBot {
 			        obstacleDetected = true;
 			        obstacleDirection = o.getObjectDirection();
 			        initiateObstacleAvoidance();
+			    }*/
+
+				for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+			        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
+					//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+
+			        if (obstacleInPath) {
+			            sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
+			            obstacleDetected = true;
+			            obstacleDirection = o.getObjectDirection();
+			            initiateObstacleAvoidance();
+			        }
 			    }
 			}		    
 	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
