@@ -179,22 +179,22 @@ public class MacDuoMain extends MacDuoBaseBot {
 					break;
 				case MOVING:			
 					if((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) {
-						System.out.println(!isShooterAvoiding+ " following");
+						if (whoAmI == MAIN1) System.out.println(!isShooterAvoiding+ " following");
 						reach_rdv_point(rdvX, rdvY);
 					}
 					else {
-						System.out.println("avoiding");
+						if (whoAmI == MAIN1) System.out.println("avoiding");
+						if (whoAmI == MAIN1) System.out.println("try to avoid into " + targetX + " " + targetY);
 
-						double dirX = Math.cos(getHeading()); 
-					    double dirY = Math.sin(getHeading()); 
 
-					    // Vérifie si on a atteint la cible en tenant compte de la direction
-					    boolean reachedTargetX = (dirX > 0) ? (myPos.getX() <= targetX) : (myPos.getX() >= targetX);
-					    boolean reachedTargetY = (dirY > 0) ? (myPos.getY() <= targetY) : (myPos.getY() >= targetY);
+					    if (myPos.getX() < targetX || myPos.getY() < targetY) { // a changer
+					        if (whoAmI == MAIN1) System.out.println("avoiding myMove");
 
-					    if (!reachedTargetX || !reachedTargetY) {
 					        myMove(true);
+				
 					    } else {
+							if (whoAmI == MAIN1) System.out.println("avoiding reached");
+
 					    	isShooterAvoiding = false;
 					    }
 					}
@@ -242,7 +242,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 				
 				if (state == State.MOVING_BACK) {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY(), true);
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
 						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
@@ -256,7 +256,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 				} 
 				else {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY(), false);
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
 						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {

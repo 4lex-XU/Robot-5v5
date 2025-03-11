@@ -189,7 +189,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected void turnLeft() {
 		
-		if (!isSameDirection(getHeading(),oldAngle+(-0.25 * Math.PI))) {
+		if (!isSameDirection(getHeading(),oldAngle+(-0.5 * Math.PI))) {
 			System.out.println("trying to turn left");
 			stepTurn(Parameters.Direction.LEFT);
 	    } else {
@@ -200,7 +200,7 @@ abstract class MacDuoBaseBot extends Brain {
 	}
 	
 	protected void turnRight() {
-		if (!isSameDirection(getHeading(),oldAngle+(0.25 * Math.PI))) {
+		if (!isSameDirection(getHeading(),oldAngle+(0.5 * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
 	    } else {
 	    	System.out.println("trying to move right");
@@ -256,9 +256,9 @@ abstract class MacDuoBaseBot extends Brain {
 	    return bestAngle;
 	}
 
-	protected boolean isPointInTrajectory(double robotX, double robotY, double robotHeading, double pointX, double pointY, boolean avoiding) {
+	protected boolean isPointInTrajectory(double robotX, double robotY, double robotHeading, double pointX, double pointY) {
 		// Dimensions de la zone
-		double pathLength = (avoiding) ? BOT_RADIUS*1.5 : BOT_RADIUS*2.5; // Longueur de la trajectoire
+		double pathLength = BOT_RADIUS*2.5; // Longueur de la trajectoire
 		double pathWidth = BOT_RADIUS*2;   // Largeur totale (50 mm de chaque côté)
 	
 		// Calcul du vecteur direction du robot
@@ -338,31 +338,31 @@ abstract class MacDuoBaseBot extends Brain {
 			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != Types.BULLET) {
 				for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
 					if (!obstacleInPathRight) {
-						obstacleInPathRight = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() + 0.25 * Math.PI), p.getX(), p.getY(), true);
+						obstacleInPathRight = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() + 0.5 * Math.PI), p.getX(), p.getY());
 					}
 					if (!obstacleInPathLeft) {
 						if(whoAmI==SBOT)
 							//System.out.println("obstacle in path left "+p.getX()+" "+p.getY()+ " " + o.getObjectType());
-					    obstacleInPathLeft = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() - 0.25 * Math.PI), p.getX(), p.getY(), true);
+					    obstacleInPathLeft = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() - 0.5 * Math.PI), p.getX(), p.getY());
 					}
 			    }
 			}
 		}
-		System.out.println("isShooterAvoiding: "+isShooterAvoiding + " obstacleInPathRight: "+obstacleInPathRight + " obstacleInPathLeft: "+obstacleInPathLeft);
+		if (whoAmI == MAIN1)  System.out.println("isShooterAvoiding: "+isShooterAvoiding + " obstacleInPathRight: "+obstacleInPathRight + " obstacleInPathLeft: "+obstacleInPathLeft);
 
 		if (!obstacleInPathRight) {
-			System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning right");
+			if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning right");
 			state = State.TURNING_RIGHT;
-			targetX = myPos.getX() + Math.cos(getHeading()+0.25*Math.PI) *100;
-			targetY= myPos.getY() + Math.sin(getHeading()+0.25*Math.PI) *100;
+			targetX = myPos.getX() + Math.cos(getHeading()+0.5*Math.PI) *100;
+			targetY= myPos.getY() + Math.sin(getHeading()+0.5*Math.PI) *100;
 
 			return;
 		}
 		if (!obstacleInPathLeft) {
-			System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning left");
+			if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning left");
 			state = State.TURNING_LEFT;
-			targetX = myPos.getX() + Math.cos(getHeading()-0.25*Math.PI) *100;
-			targetY= myPos.getY() + Math.sin(getHeading()-0.25*Math.PI) *100;
+			targetX = myPos.getX() + Math.cos(getHeading()-0.5*Math.PI) *100;
+			targetY= myPos.getY() + Math.sin(getHeading()-0.5*Math.PI) *100;
 			return;
 		}
 		//sendLogMessage("move back");
@@ -509,12 +509,8 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 					double dirX = -Math.cos(getHeading()); // Négatif car on recule
 				    double dirY = -Math.sin(getHeading()); 
 
-				    // Vérifie si on a atteint la cible en tenant compte de la direction
-				    boolean reachedTargetX = (dirX > 0) ? (myPos.getX() >= targetX) : (myPos.getX() <= targetX);
-				    boolean reachedTargetY = (dirY > 0) ? (myPos.getY() >= targetY) : (myPos.getY() <= targetY);
-
 				    // Continue à reculer tant que l'on n'a pas atteint la cible
-				    if (!reachedTargetX || !reachedTargetY) {
+				    if (myPos.getX() > targetX && myPos.getX() < targetX + 100 && myPos.getY() > targetY && myPos.getY() < targetY + 100) { // a changer
 				        myMove(false);
 				    } else {
 				    	initiateObstacleAvoidance();
@@ -547,7 +543,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
 				if (state == State.MOVING_BACK) {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY(), true);
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
 						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
@@ -561,7 +557,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				} 
 				else {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY(), false);
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
 						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
