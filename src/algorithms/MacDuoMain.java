@@ -104,8 +104,7 @@ public class MacDuoMain extends MacDuoBaseBot {
     @Override
     public void activate() {
 		isTeamA = (getHeading() == Parameters.EAST);
-		System.out.println(isTeamA);
-
+  
     	boolean top = false;
     	boolean bottom = false;
         for (IRadarResult o: detectRadar())
@@ -139,7 +138,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                 //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
 	            break;
         }
-	    isMoving = true;
 	    state = State.FIRST_RDV;
 	    rdv_point = true;
 	    oldAngle = myGetHeading();
@@ -161,11 +159,10 @@ public class MacDuoMain extends MacDuoBaseBot {
         }
         
     	detection();
-		if (state == State.FIRE) {
+		if (state == State.FIRE && !isShooterAvoiding) {
 			handleFire();
 		}
 		readMessages();
-		if (freeze) return;
 		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
@@ -181,8 +178,13 @@ public class MacDuoMain extends MacDuoBaseBot {
 					}
 					break;
 				case MOVING:			
-					if((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) reach_rdv_point(rdvX, rdvY);
+					if((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) {
+						System.out.println(!isShooterAvoiding+ " following");
+						reach_rdv_point(rdvX, rdvY);
+					}
 					else {
+						System.out.println("avoiding");
+
 						double dirX = Math.cos(getHeading()); 
 					    double dirY = Math.sin(getHeading()); 
 
@@ -229,7 +231,6 @@ public class MacDuoMain extends MacDuoBaseBot {
 	//=========================================ADDED=========================================	
 
     protected void detection() {
-		freeze = false;
 		fireOrder = false;
 	    obstacleDetected = false;
         boolean enemyDetected = false;
@@ -241,12 +242,12 @@ public class MacDuoMain extends MacDuoBaseBot {
 				
 				if (state == State.MOVING_BACK) {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
-						System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY(), true);
+						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
 				            //sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
-				            System.out.println("Obstacle détecté");
+				            //System.out.println("Obstacle détecté");
 				            obstacleDetected = true;
 				            obstacleDirection = o.getObjectDirection();
 				            initiateObstacleAvoidance();
@@ -255,11 +256,11 @@ public class MacDuoMain extends MacDuoBaseBot {
 				} 
 				else {
 					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
-						System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
+				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY(), false);
+						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
-				            //sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
+				            sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
 				            System.out.println("Obstacle détecté");
 				            obstacleDetected = true;
 				            obstacleDirection = o.getObjectDirection();
@@ -293,11 +294,11 @@ public class MacDuoMain extends MacDuoBaseBot {
 //	        }
 	    }
 	    
-	    if (enemyDetected) {
+	    if (enemyDetected && !isShooterAvoiding) {
 	        state = State.FIRE;
 	        //sendLogMessage("state fire dans detection");
 	        avoidanceTimer = 0;
-	    } else if (!enemyDetected && state != State.FIRE){
+	    } else if (!enemyDetected && state != State.FIRE && !isShooterAvoiding){
 	        state = State.MOVING;
 	        //sendLogMessage("state moving dans detection");
 	    }
@@ -396,7 +397,7 @@ public class MacDuoMain extends MacDuoBaseBot {
         Types enemyType = parts[3].contains("MainBot") ? Types.OpponentMainBot : Types.OpponentSecondaryBot;
 
         addOrUpdateEnemy(enemyX, enemyY, enemyDistance, enemyDirection, false, enemyType);
-        handleFire(); 
+		if (!isShooterAvoiding) handleFire(); 
     }
     
     private void handleFire() {
