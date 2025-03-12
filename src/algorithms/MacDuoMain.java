@@ -2,7 +2,9 @@ package algorithms;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import algorithms.MacDuoBaseBot.State;
 import characteristics.IFrontSensorResult;
@@ -78,6 +80,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	}
     private List<Ennemy> enemyTargets = new ArrayList<>();
     private List<double[]> wreckPositions = new ArrayList<>();
+    private List<Ennemy> enemyPosToAvoid = new ArrayList<>();
 	
 	private static final double FIREANGLEPRECISION = 0.3;
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 100;
@@ -177,41 +180,27 @@ public class MacDuoMain extends MacDuoBaseBot {
 						reach_rdv_point(rdvX, rdvY);
 					}
 					break;
-				case MOVING:			
-					if((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) {
-						if (whoAmI == MAIN1) System.out.println(!isShooterAvoiding+ " following");
-						reach_rdv_point(rdvX, rdvY);
-					}
-					else {
-						if (whoAmI == MAIN1) System.out.println("avoiding");
-						if (whoAmI == MAIN1) System.out.println("try to avoid into " + targetX + " " + targetY);
+				case MOVING:
+				    if ((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) {
+				        reach_rdv_point(rdvX, rdvY);
+				    } else {
+				        // En mode évitement, on avance
+				        if (!hasReachedTarget(targetX, targetY, true)) {
+				            myMove(true);
+				        } else {
+				            // La cible d'évitement est atteinte
+				            isShooterAvoiding = false;
+				        }
+				    }
+				    break;
 
-
-					    if (myPos.getX() < targetX || myPos.getY() < targetY) { // a changer
-					        if (whoAmI == MAIN1) System.out.println("avoiding myMove");
-
-					        myMove(true);
-				
-					    } else {
-							if (whoAmI == MAIN1) System.out.println("avoiding reached");
-
-					    	isShooterAvoiding = false;
-					    }
-					}
-					break;
 				case MOVING_BACK:
-					double dirX = -Math.cos(getHeading()); // Négatif car on recule
-				    double dirY = -Math.sin(getHeading()); 
-
-				    // Vérifie si on a atteint la cible en tenant compte de la direction
-				    boolean reachedTargetX = (dirX > 0) ? (myPos.getX() >= targetX) : (myPos.getX() <= targetX);
-				    boolean reachedTargetY = (dirY > 0) ? (myPos.getY() >= targetY) : (myPos.getY() <= targetY);
-
-				    // Continue à reculer tant que l'on n'a pas atteint la cible
-				    if (!reachedTargetX || !reachedTargetY) {
+				    // Ici, on recule jusqu'à atteindre la cible calculée pour le recul
+				    if (!hasReachedTarget(targetX, targetY, false)) {
 				        myMove(false);
 				    } else {
-				    	initiateObstacleAvoidance();
+				        // Une fois la cible atteinte, on peut par exemple relancer l'évitement ou passer à un autre état
+				        initiateObstacleAvoidance();
 				    }
 				    break;
 				case TURNING_LEFT:
@@ -375,7 +364,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 
 	    boolean exists = false;
 	    for (double[] wreck : wreckPositions) {
-	        if (Math.abs(wreck[0] - wreckX) < 20 && Math.abs(wreck[1] - wreckY) < 20) { // Tolérance de 20mm
+	        if (Math.abs(wreck[0] - wreckX) < 20 && Math.abs(wreck[1] - wreckY) < 20) {
 	            exists = true;
 	            break;
 	        }
@@ -384,7 +373,17 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        wreckPositions.add(new double[]{wreckX, wreckY});
 	        //sendLogMessage("New wreck detected at (" + (int) wreckX + ", " + (int) wreckY + ")");
 	    }
-	    enemyTargets.removeIf(enemy -> Math.abs(enemy.x - wreckX) < 50 && Math.abs(enemy.y - wreckY) < 50);
+	    
+	    Ennemy detectedEnemyWreck = null;
+	    for (Ennemy enemy : enemyTargets) {
+	    	if (Math.abs(enemy.x - wreckX) < 50 && Math.abs(enemy.y - wreckY) < 50) {
+	    		detectedEnemyWreck = enemy;
+	    		break;
+	    	}
+	    	
+	    }
+	    enemyTargets.remove(detectedEnemyWreck);
+	    enemyPosToAvoid.add(detectedEnemyWreck);    
 	}
     
     private void handleEnemyMessage(String[] parts) {

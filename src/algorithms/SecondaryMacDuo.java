@@ -234,13 +234,13 @@ abstract class MacDuoBaseBot extends Brain {
 	private double getNearestAllowedDirection(double angle) {
 	    double[] allowedAngles = {
 	        0,                      // Est (0°)
-	        Math.PI / 4,            // Nord-Est (45°)
+	        //Math.PI / 4,            // Nord-Est (45°)
 	        Math.PI / 2,            // Nord (90°)
-	        3 * Math.PI / 4,        // Nord-Ouest (135°)
+	        //3 * Math.PI / 4,        // Nord-Ouest (135°)
 	        Math.PI,                // Ouest (180°)
-	        -3 * Math.PI / 4,       // Sud-Ouest (-135°)
+	        //-3 * Math.PI / 4,       // Sud-Ouest (-135°)
 	        -Math.PI / 2,           // Sud (-90°)
-	        -Math.PI / 4            // Sud-Est (-45°)
+	        //-Math.PI / 4            // Sud-Est (-45°)
 	    };
 
 	    double bestAngle = allowedAngles[0];
@@ -403,7 +403,50 @@ abstract class MacDuoBaseBot extends Brain {
 			}
 		}
 		initiateObstacleAvoidance();
-	} 
+	}
+	
+	protected boolean hasReachedTarget(double targetX, double targetY, boolean movingForward) {
+		boolean reachedX, reachedY;
+		double currentX = myPos.getX();
+		double currentY = myPos.getY();
+		
+		if (movingForward) {
+		// Lorsque le robot avance, on s'attend à ce que les composantes 
+		// suivent le signe de cos(avoidanceHeading) et sin(avoidanceHeading)
+		if (Math.cos(getHeading()) > 0) {
+		reachedX = (currentX >= targetX);
+		} else if (Math.cos(getHeading()) < 0) {
+		reachedX = (currentX <= targetX);
+		} else {
+		reachedX = true;
+		}
+		if (Math.sin(getHeading()) > 0) {
+		reachedY = (currentY >= targetY);
+		} else if (Math.sin(getHeading()) < 0) {
+		reachedY = (currentY <= targetY);
+		} else {
+		reachedY = true;
+		}
+		} else { // movingBackward
+		// Lorsqu'on recule, la direction effective est inversée
+		if (Math.cos(getHeading()) > 0) {
+		reachedX = (currentX <= targetX);
+		} else if (Math.cos(getHeading()) < 0) {
+		reachedX = (currentX >= targetX);
+		} else {
+		reachedX = true;
+		}
+		if (Math.sin(getHeading()) > 0) {
+		reachedY = (currentY <= targetY);
+		} else if (Math.sin(getHeading()) < 0) {
+		reachedY = (currentY >= targetY);
+		} else {
+		reachedY = true;
+		}
+		}
+
+		return reachedX && reachedY;
+	}
 	    
 }
 
