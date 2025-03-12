@@ -68,6 +68,16 @@ class Position {
 	
 }
 
+class Segment {
+    public Position start;
+    public Position end;
+    public Segment(Position start, Position end) {
+        this.start = start;
+        this.end = end;
+    }
+}
+
+
 
 //====================================================================================
 //====================================ABSTRACT BOT====================================
@@ -190,10 +200,10 @@ abstract class MacDuoBaseBot extends Brain {
 	protected void turnLeft() {
 		
 		if (!isSameDirection(getHeading(),oldAngle+(-0.5 * Math.PI))) {
-			System.out.println("trying to turn left");
+			//System.out.println("trying to turn left");
 			stepTurn(Parameters.Direction.LEFT);
 	    } else {
-	    	System.out.println("trying to move left");
+	    	//System.out.println("trying to move left");
 	        state = State.MOVING;
 	        myMove(true);
 	    }				
@@ -203,7 +213,7 @@ abstract class MacDuoBaseBot extends Brain {
 		if (!isSameDirection(getHeading(),oldAngle+(0.5 * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
 	    } else {
-	    	System.out.println("trying to move right");
+	    	//System.out.println("trying to move right");
 	        state = State.MOVING;
 	        myMove(true);
 	    }				
@@ -325,6 +335,22 @@ abstract class MacDuoBaseBot extends Brain {
 		return new Position[]{topLeft, topRight, bottomLeft, bottomRight};
 	}
 	
+	protected Position[] getObstacleCorners(double obstacleRadius , double robotX, double robotY) {
+		double distance = distance(myPos, new Position (robotX, robotY));
+		double direction = Math.atan2(robotY - myPos.getY(), robotX - myPos.getX());
+		// Position du centre de l'obstacle
+		double obstacleX = robotX + distance * Math.cos(direction);
+		double obstacleY = robotY + distance * Math.sin(direction);
+	
+		// Calcul des coins du rectangle englobant
+		Position topLeft = new Position(obstacleX - obstacleRadius, obstacleY - obstacleRadius);
+		Position topRight = new Position(obstacleX + obstacleRadius, obstacleY - obstacleRadius);
+		Position bottomLeft = new Position(obstacleX - obstacleRadius, obstacleY + obstacleRadius);
+		Position bottomRight = new Position(obstacleX + obstacleRadius, obstacleY + obstacleRadius);
+	
+		return new Position[]{topLeft, topRight, bottomLeft, bottomRight};
+	}
+	
 	protected void initiateObstacleAvoidance() {
 		isShooterAvoiding = true; 
 		boolean obstacleInPathRight = false;
@@ -348,10 +374,10 @@ abstract class MacDuoBaseBot extends Brain {
 			    }
 			}
 		}
-		if (whoAmI == MAIN1)  System.out.println("isShooterAvoiding: "+isShooterAvoiding + " obstacleInPathRight: "+obstacleInPathRight + " obstacleInPathLeft: "+obstacleInPathLeft);
+		//if (whoAmI == MAIN1)  System.out.println("isShooterAvoiding: "+isShooterAvoiding + " obstacleInPathRight: "+obstacleInPathRight + " obstacleInPathLeft: "+obstacleInPathLeft);
 
 		if (!obstacleInPathRight) {
-			if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning right");
+			//if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning right");
 			state = State.TURNING_RIGHT;
 			targetX = myPos.getX() + Math.cos(getHeading()+0.5*Math.PI) *100;
 			targetY= myPos.getY() + Math.sin(getHeading()+0.5*Math.PI) *100;
@@ -359,7 +385,7 @@ abstract class MacDuoBaseBot extends Brain {
 			return;
 		}
 		if (!obstacleInPathLeft) {
-			if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning left");
+			//if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning left");
 			state = State.TURNING_LEFT;
 			targetX = myPos.getX() + Math.cos(getHeading()-0.5*Math.PI) *100;
 			targetY= myPos.getY() + Math.sin(getHeading()-0.5*Math.PI) *100;

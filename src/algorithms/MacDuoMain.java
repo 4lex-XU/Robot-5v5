@@ -152,10 +152,10 @@ public class MacDuoMain extends MacDuoBaseBot {
     	//DEBUG MESSAGE
         boolean debug = true;
         if (debug && whoAmI == MAIN1) {
-        	sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	//sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN2) {
-        	sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	//sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN3) {
         	sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
@@ -250,7 +250,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	
 				        if (obstacleInPath) {
 				            sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
-				            System.out.println("Obstacle détecté");
+				            //System.out.println("Obstacle détecté");
 				            obstacleDetected = true;
 				            obstacleDirection = o.getObjectDirection();
 				            initiateObstacleAvoidance();
@@ -341,7 +341,8 @@ public class MacDuoMain extends MacDuoBaseBot {
     private void handlePosMessage(String[] parts) {
     	double botX = Double.parseDouble(parts[2]);
         double botY = Double.parseDouble(parts[3]);
-    	allyPos.put(parts[1], new BotState(botX, botY, true));{
+    	allyPos.put(parts[1], new BotState(botX, botY, true));
+    	sendLogMessage(parts[1] + " position " + botX + " " +  botY);
             if (parts[1].equals("SBOT")) {
                 if (state != State.FIRE) {
                     rdvX = botX;
@@ -355,8 +356,8 @@ public class MacDuoMain extends MacDuoBaseBot {
 					sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
 				}
 			}
-    	}
     }
+    
     
     private void handleWreckMessage(String[] parts) {
 	    double wreckX = Double.parseDouble(parts[4]);
@@ -506,7 +507,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
 	    //sendLogMessage("choosetarget target len : " + enemyTargets.size());
 	    // Parcours les ennemis et choisit celui qui est le plus proche sans allié sur la trajectoire
-	    for (Ennemy enemy : enemyTargets) {
+	    for (Ennemy ennemy : enemyTargets) {
 	        boolean allyInTheWay = false;
 	        for (BotState ally : allyPos.values()) { 
 
@@ -515,16 +516,8 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            if (allyX == myPos.getX() && allyY == myPos.getY()) {
 	                continue;
 	            }
-	            double allyDirection = Math.atan2(allyY - myPos.getY(), allyX - myPos.getX());
-	            double enemyDirection = Math.atan2(enemy.y - myPos.getY(), enemy.x - myPos.getX());
-	            double distEnemyToAlly = perpendicularDistance(allyX, allyY, myPos.getX(), myPos.getY(), enemy.x, enemy.y);
 
-	            //boolean isSameLine = isSameDirection(allyDirection, enemyDirection);
-	            // Vérifie si l'allié est **entre** le robot et l'ennemi
-	            double distAlly = Math.sqrt(Math.pow(allyX - myPos.getX(), 2) + Math.pow(allyY - myPos.getY(), 2));
-	            double distEnemy = enemy.distance;
-
-	            if (distEnemyToAlly < 30. && distAlly < distEnemy) {
+	            if (isObstacleOnMyFire(getObstacleCorners(BOT_RADIUS, allyX, allyY), new Position(ennemy.x, ennemy.y))) {
 	            	allyInTheWay = true;
 	                //sendLogMessage("(" + allyX + ", " + allyY + ") aligned with enemy at (" + enemy.x + ", " + enemy.y + ")");                  
 	                break;
@@ -532,12 +525,102 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        }
 	        if (!allyInTheWay) {
 	        	//sendLogMessage("ennemy");
-	            return enemy;
+	            return ennemy;
 	        }
 	    }
 	    //sendLogMessage("ennemy not found " + enemyTargets.size());
 	    return null;
 	}
+	
+	private boolean isObstacleOnMyFire(Position[] obstacleCorners, Position target) {
+		boolean isObstructed = false;
+		Position[][] trajectoryEdges = getBulletTrajectoryEdges(myPos, target, Parameters.bulletRadius);
+        Segment[] obstacleEdges = getObstacleEdges(obstacleCorners);
+        for (Position[] edge : trajectoryEdges) {
+            Position tStart = edge[0];
+            Position tEnd = edge[1];
+            for (Segment obsEdge : obstacleEdges) {
+                if (segmentsIntersect(tStart, tEnd, obsEdge.start, obsEdge.end)) {
+                    isObstructed = true;
+                    break;
+                }
+            }
+            if (isObstructed) break;
+
+        }
+        return isObstructed;
+	}
+	
+	private boolean segmentsIntersect(Position p1, Position q1, Position p2, Position q2) {
+	    int o1 = orientation(p1, q1, p2);
+	    int o2 = orientation(p1, q1, q2);
+	    int o3 = orientation(p2, q2, p1);
+	    int o4 = orientation(p2, q2, q1);
+	    
+	    // Cas général : les orientations sont différentes.
+	    if (o1 != o2 && o3 != o4)
+	        return true;
+	    
+	    // Cas particuliers : p1, q1 et p2 sont colinéaires et p2 se trouve sur le segment p1-q1
+	    if (o1 == 0 && onSegment(p1, p2, q1)) return true;
+	    // p1, q1 et q2 sont colinéaires et q2 se trouve sur le segment p1-q1
+	    if (o2 == 0 && onSegment(p1, q2, q1)) return true;
+	    // p2, q2 et p1 sont colinéaires et p1 se trouve sur le segment p2-q2
+	    if (o3 == 0 && onSegment(p2, p1, q2)) return true;
+	    // p2, q2 et q1 sont colinéaires et q1 se trouve sur le segment p2-q2
+	    if (o4 == 0 && onSegment(p2, q1, q2)) return true;
+	    
+	    return false;
+	}
+	
+	private int orientation(Position p, Position q, Position r) {
+	    double val = (q.getY() - p.getY()) * (r.getX() - q.getX()) - 
+	                 (q.getX() - p.getX()) * (r.getY() - q.getY());
+	    if (Math.abs(val) < 1e-9) return 0;  // colinéaire
+	    return (val > 0) ? 1 : 2;  // 1 = horaire, 2 = antihoraire
+	}
+	
+	private boolean onSegment(Position p, Position q, Position r) {
+	    return q.getX() <= Math.max(p.getX(), r.getX()) &&
+	           q.getX() >= Math.min(p.getX(), r.getX()) &&
+	           q.getY() <= Math.max(p.getY(), r.getY()) &&
+	           q.getY() >= Math.min(p.getY(), r.getY());
+	}
+
+
+	protected Segment[] getObstacleEdges(Position[] corners) {
+	    // Ici, on définit un segment par paire de coins consécutifs.
+	    Segment edge1 = new Segment(corners[0], corners[1]);
+	    Segment edge2 = new Segment(corners[1], corners[2]);
+	    Segment edge3 = new Segment(corners[2], corners[3]);
+	    Segment edge4 = new Segment(corners[3], corners[0]);
+	    return new Segment[] { edge1, edge2, edge3, edge4 };
+	}
+
+	protected Position[][] getBulletTrajectoryEdges(Position shooter, Position target, double bulletRadius) {
+	    double dx = target.getX() - shooter.getX();
+	    double dy = target.getY() - shooter.getY();
+	    double length = Math.sqrt(dx * dx + dy * dy);
+	    if (length == 0) return null; // Cas particulier
+
+	    double ndx = dx / length;
+	    double ndy = dy / length;
+
+	    // Vecteur perpendiculaire (rotation de 90°)
+	    double nx = -ndy;
+	    double ny = ndx;
+
+	    Position shooter1 = new Position(shooter.getX() + bulletRadius * nx, shooter.getY() + bulletRadius * ny);
+	    Position target1  = new Position(target.getX() + bulletRadius * nx, target.getY() + bulletRadius * ny);
+	    Position shooter2 = new Position(shooter.getX() - bulletRadius * nx, shooter.getY() - bulletRadius * ny);
+	    Position target2  = new Position(target.getX() - bulletRadius * nx, target.getY() - bulletRadius * ny);
+
+	    return new Position[][] { { shooter1, target1 }, { shooter2, target2 } };
+	}
+
+	
+	
+	//////////////////////////////////////////////////////////////////////////////////////////////////////
 	
 	private double perpendicularDistance(double allyX, double allyY, double x1, double y1, double x2, double y2) {
 	    double numerator = Math.abs((y2 - y1) * allyX - (x2 - x1) * allyY + x2 * y1 - y2 * x1);
