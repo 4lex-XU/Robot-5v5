@@ -92,14 +92,14 @@ public class MacDuoMain extends MacDuoBaseBot {
     private double rdvX, rdvY; 
     private boolean fireOrder;
     private Parameters.Direction turnedDirection;
+    private boolean avoidingEnnemy = false;
     
     private boolean obstacleDetected = false;
     private boolean obstacleInWay = false;
     private double obstacleDirection = 0;
-    private int avoidanceTimer = 0;
-    private static final int AVOIDANCE_DURATION = 10;
-
-    private boolean following;
+    private int waitingTimer = 0;
+    private static final int WAITING_DURATION = 10;
+    
 	//=========================================CORE=========================================	
 
 	public MacDuoMain () { super();}
@@ -144,7 +144,6 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    state = State.FIRST_RDV;
 	    rdv_point = true;
 	    oldAngle = myGetHeading();
-		following = true;
     }
     
     @Override
@@ -162,9 +161,6 @@ public class MacDuoMain extends MacDuoBaseBot {
         }
         
     	detection();
-		if (state == State.FIRE && !isShooterAvoiding) {
-			handleFire();
-		}
 		readMessages();
 		
 		if (getHealth() <= 0) {
@@ -175,23 +171,39 @@ public class MacDuoMain extends MacDuoBaseBot {
 		
 		try {
 			switch (state) {
+				case FIRE:
+					if (!isShooterAvoiding) {
+						handleFire();
+					}
+					break;
+				
 				case FIRST_RDV:
 					if (rdv_point) {
 						reach_rdv_point(rdvX, rdvY);
 					}
 					break;
 				case MOVING:
-				    if ((following || allyPos.get(NBOT).isAlive()) && !isShooterAvoiding) {
-				        reach_rdv_point(rdvX, rdvY);
-				    } else {
-				        // En mode évitement, on avance
-				        if (!hasReachedTarget(targetX, targetY, true)) {
-				            myMove(true);
-				        } else {
-				            // La cible d'évitement est atteinte
-				            isShooterAvoiding = false;
-				        }
-				    }
+					boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
+					if (following) {
+						if (!isShooterAvoiding) {
+					        reach_rdv_point(rdvX, rdvY);
+						}
+						else {
+							if (!hasReachedTarget(targetX, targetY, true)) {
+					            myMove(true);
+					        } else {
+					            // La cible d'évitement est atteinte
+					            isShooterAvoiding = false;
+					        }
+						}
+					} else {
+						if (waitingTimer < WAITING_DURATION) {
+							waitingTimer ++;
+							return;
+						}
+						waitingTimer = 0;
+						myMove(true);
+					}
 				    break;
 
 				case MOVING_BACK:
@@ -271,22 +283,11 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            handleWreckMessage(new String[]{"WRECK", "", "", "", String.valueOf(oX), String.valueOf(oY)});
 	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	        }
-	        
-//	        // Obstacle detection for movement
-//			obstacleDirection = o.getObjectDirection();
-//	        if ((o.getObjectDistance() <= OBSTACLE_AVOIDANCE_DISTANCE && ((isSameDirection(obstacleDirection, Parameters.NORTH) || isSameDirection(obstacleDirection, Parameters.SOUTH)))) 
-//					|| detectFront().getObjectType()!=IFrontSensorResult.Types.NOTHING ) {
-//				obstacleDetected = true;
-//	        	initiateObstacleAvoidance();
-//				//System.out.println("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
-//	            //sendLogMessage("Obstacle detected at direction: " + (obstacleDirection * 180 / Math.PI) + "°");
-//	        }
 	    }
 	    
 	    if (enemyDetected && !isShooterAvoiding) {
 	        state = State.FIRE;
 	        //sendLogMessage("state fire dans detection");
-	        avoidanceTimer = 0;
 	    } else if (!enemyDetected && state != State.FIRE && !isShooterAvoiding){
 	        state = State.MOVING;
 	        //sendLogMessage("state moving dans detection");
@@ -311,23 +312,10 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            case "POS":
 	            	handlePosMessage(parts);
 	            	break;
-	           /* case "MOVING_BACK":
-	            	double enemyX = Double.parseDouble(parts[2]);
-	                double enemyY = Double.parseDouble(parts[3]);
-	            	double distance = Math.sqrt(Math.pow(enemyX - myPos.getX(), 2) + Math.pow(enemyY - myPos.getY(), 2));
-	            	if (distance < 700){
-	            		state = State.MOVING_BACK;
-	        	        //sendLogMessage("state moving back dans readMessages");
-	            		myMove(false);
-	            	}
-	            	break;*/
 				case "DEAD":
 					allyPos.put(parts[1], new BotState( allyPos.get(parts[1]).getPosition().getX(), 
 														allyPos.get(parts[1]).getPosition().getY(), 
 														false));
-					if (parts[1].equals(SBOT)) {
-						following = false;
-					}
 					break;
             }
         }
@@ -397,65 +385,71 @@ public class MacDuoMain extends MacDuoBaseBot {
         Types enemyType = parts[3].contains("MainBot") ? Types.OpponentMainBot : Types.OpponentSecondaryBot;
 
         addOrUpdateEnemy(enemyX, enemyY, enemyDistance, enemyDirection, false, enemyType);
-		if (!isShooterAvoiding) handleFire(); 
+        state = State.FIRE;
     }
     
     private void handleFire() {
         Ennemy target = chooseTarget();
         if (target != null) {
-            if (target.distance > 990) {
+            if (avoidingEnnemy) {
+            	System.out.println(" move back ennemy dist " + target.distance);
+            	if (target.distance < 800) {
+                	myMove(false);
+            	} else {
+            		myMove(true);
+            	}
+            	avoidingEnnemy = false;
                 //moveTowardsTarget(target);
-            	state = State.MOVING;
                 return; 
             }
+            
 			// passe en mode fire si un ennemi est à porter
-			state = State.FIRE;
 
-            if (lastTarget != null && lastTarget.equals(target)) {
-                fireStreak++;
-                if (fireStreak >= MAX_FIRE_STREAK) {
-                    //sendLogMessage("Target stuck for too long, switching target.");
-                    enemyTargets.remove(target);
-                    fireStreak = 0;
-                    lastTarget = null;
-
-                    target = chooseTarget();
-                    if (target == null) {
-                        //sendLogMessage("No more targets, switching to MOVING.");
-                        state = State.MOVING; 
-                        fireOrder = false;
-                        return;
-                    } else {
-                        lastTarget = target;
-                    } 
-                }
-            } else {
-                fireStreak = 0; 
-                lastTarget = target;
-            }
-
-            if (!enemyTargets.contains(target)) {
-                //sendLogMessage("Target eliminated, stopping fire.");
-                fireOrder = false;
-                state = State.MOVING;
-                return;
-            }
+//            if (lastTarget != null && lastTarget.equals(target)) {
+//                fireStreak++;
+//                if (fireStreak >= MAX_FIRE_STREAK) {
+//                    //sendLogMessage("Target stuck for too long, switching target.");
+//                    enemyTargets.remove(target);
+//                    fireStreak = 0;
+//                    lastTarget = null;
+//
+//                    target = chooseTarget();
+//                    if (target == null) {
+//                        //sendLogMessage("No more targets, switching to MOVING.");
+//                        state = State.MOVING; 
+//                        fireOrder = false;
+//                        return;
+//                    } else {
+//                        lastTarget = target;
+//                    } 
+//                }
+//            } else {
+//                fireStreak = 0; 
+//                lastTarget = target;
+//            }
+//
+//            if (!enemyTargets.contains(target)) {
+//                //sendLogMessage("Target eliminated, stopping fire.");
+//                fireOrder = false;
+//                state = State.MOVING;
+//                return;
+//            }
+//            
+//            if (obstacleInWay) {
+//                repositionForShooting(target);
+//                return;
+//            }
             
-            if (obstacleInWay) {
-                repositionForShooting(target);
-                return;
-            }
-            
-            if (fireOrder) {
+            //if (fireOrder) {
 //            	if (target.getSpeed() > 1) {
 //            	    firePositionWithPrediction(target);
 //            	} else {
             	    firePosition(target.x, target.y);
             	//}
-            }
+            //}
         }  else {
             state = State.MOVING;
-            //sendLogMessage("state moving dans handleFire");
+            sendLogMessage("state moving dans handleFire");
             fireOrder = false;
         }
     }
@@ -463,6 +457,8 @@ public class MacDuoMain extends MacDuoBaseBot {
 	private void firePosition(double x, double y) {
 	    double angle = Math.atan2(y - myPos.getY(), x - myPos.getX());
 	    fire(angle);
+        avoidingEnnemy = true;
+	    System.out.println("fire");
 	}
 	
 	private void firePositionWithPrediction(Ennemy target) {
@@ -501,6 +497,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    }
 	    //sendLogMessage("ennemy added");
 	    enemyTargets.add(new Ennemy(x, y, distance, direction, type));
+	    
 	}
 	
 	private Ennemy chooseTarget() {

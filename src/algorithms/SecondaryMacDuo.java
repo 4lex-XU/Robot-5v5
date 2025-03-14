@@ -139,19 +139,17 @@ abstract class MacDuoBaseBot extends Brain {
 	    double distanceToScout = Math.sqrt(Math.pow(myPos.getX() - tX, 2) + Math.pow(myPos.getY() - tY, 2));
 
 	    // Vérifier si on est dans la portée du scout
-	    if (distanceToScout <= 400) {
-	        rdv_point = false;
-	        state = State.MOVING;
-	        return;
-	    }
+	    if (distanceToScout > 450) {
 
-	    // Adapter la direction aux angles cardinaux et diagonaux
-	    angleToTarget = getNearestAllowedDirection(angleToTarget);
+		    // Adapter la direction aux angles cardinaux et diagonaux
+		    angleToTarget = getNearestAllowedDirection(angleToTarget);
 
-	    if (!isSameDirection(getHeading(), angleToTarget)) {
-	        turnTo(angleToTarget);
-	    } else {
-	        myMove(true);
+		    if (!isSameDirection(getHeading(), angleToTarget)) {
+		        turnTo(angleToTarget);
+		    } else {
+		        myMove(true);
+		    }
+
 	    }
 	}
 	
@@ -575,14 +573,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 					myMove(true);
 					break;
 				case MOVING_BACK :
-					double dirX = -Math.cos(getHeading()); // Négatif car on recule
-				    double dirY = -Math.sin(getHeading()); 
-
-				    // Continue à reculer tant que l'on n'a pas atteint la cible
-				    if (myPos.getX() > targetX && myPos.getX() < targetX + 100 && myPos.getY() > targetY && myPos.getY() < targetY + 100) { // a changer
+				    // Ici, on recule jusqu'à atteindre la cible calculée pour le recul
+				    if (!hasReachedTarget(targetX, targetY, false)) {
 				        myMove(false);
 				    } else {
-				    	initiateObstacleAvoidance();
+				        // Une fois la cible atteinte, on peut par exemple relancer l'évitement ou passer à un autre état
+				        initiateObstacleAvoidance();
 				    }
 				    break;
 				case TURNING_LEFT :
