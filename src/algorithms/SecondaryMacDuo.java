@@ -134,6 +134,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected void reach_rdv_point(double tX, double tY) {
 	    double angleToTarget = Math.atan2(tY - myPos.getY(), tX - myPos.getX());
+	    System.out.println(" ANGLE TO TARGET " + angleToTarget + " BOTTT " + whoAmI + " MY HEADINGGG " + getHeading());
 
 	    // Calculer la distance au scout
 	    double distanceToScout = Math.sqrt(Math.pow(myPos.getX() - tX, 2) + Math.pow(myPos.getY() - tY, 2));
@@ -143,6 +144,7 @@ abstract class MacDuoBaseBot extends Brain {
 
 		    // Adapter la direction aux angles cardinaux et diagonaux
 		    angleToTarget = getNearestAllowedDirection(angleToTarget);
+	    	System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
 
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
 		        turnTo(angleToTarget);
@@ -239,7 +241,7 @@ abstract class MacDuoBaseBot extends Brain {
 	 * Cette méthode ajuste l'angle vers la direction la plus proche parmi :
 	 * Nord, Sud, Est, Ouest, Nord-Est, Nord-Ouest, Sud-Est, Sud-Ouest
 	 */
-	private double getNearestAllowedDirection(double angle) {
+	protected double getNearestAllowedDirection(double angle) {
 	    double[] allowedAngles = {
 	        0,                      // Est (0°)
 	        //Math.PI / 4,            // Nord-Est (45°)
@@ -407,6 +409,7 @@ abstract class MacDuoBaseBot extends Brain {
 			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
 				//System.out.println("pas de mur");
 				move(); 
+				System.out.println("moving forward " + whoAmI + "TEAMMM AAA " + isTeamA);
 				myPos.setX(myPredictedX);
 				myPos.setY(myPredictedY);
 	    		sendMyPosition();
@@ -552,8 +555,6 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				break;
 			}
 		}
-
-		if (freeze || !isShooterAround) return;
 		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
@@ -561,6 +562,9 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 			broadcast("DEAD " + whoAmI);
 			return;
 		}
+
+		if (freeze || !isShooterAround) return;
+		
 		
 		try {
 			switch (state) {
@@ -639,7 +643,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				case OpponentMainBot:
 				case OpponentSecondaryBot:
 					// Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
-					
+					//System.out.println(" Deetect ennemy TEAM AAA " + isTeamA);
 					broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
 					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 					if (o.getObjectDistance() < BOT_RADIUS*2.5) {
