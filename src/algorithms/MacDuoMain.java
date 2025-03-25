@@ -20,12 +20,14 @@ import characteristics.Parameters;
 public class MacDuoMain extends MacDuoBaseBot {
 	
 	private static class Ennemy {
-		double x, y;
+	    double x, y;
 	    double previousX, previousY;
+	    double prevPreviousX, prevPreviousY;
 	    double distance, direction, previousDirection;
 	    Types type;
-	    double speed;
-	    boolean hasMoved;
+	    double speedX, speedY;
+	    boolean hasMovedTwice;
+	    double predictedX, predictedY; // Ajout pour stocker la prédiction
 
 	    public Ennemy(double x, double y, double distance, double direction, Types type) {
 	        this.x = x;
@@ -35,12 +37,19 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        this.previousDirection = direction;
 	        this.previousX = x;
 	        this.previousY = y;
+	        this.prevPreviousX = x;
+	        this.prevPreviousY = y;
 	        this.type = type;
-	        this.speed = 0;
-	        this.hasMoved = false; // First detection, no movement yet
+	        this.speedX = 0;
+	        this.speedY = 0;
+	        this.hasMovedTwice = false;
+	        this.predictedX = x; // Initialisé à la position actuelle
+	        this.predictedY = y;
 	    }
 	    
 	    public void updatePosition(double newX, double newY, double newDistance, double newDirection) {
+	        this.prevPreviousX = this.previousX;
+	        this.prevPreviousY = this.previousY;
 	        this.previousX = this.x;
 	        this.previousY = this.y;
 	        this.previousDirection = this.direction;
@@ -50,29 +59,33 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        this.distance = newDistance;
 	        this.direction = newDirection;
 
-	        // Calculate speed based on movement between two steps
-	        double dx = x - previousX;
-	        double dy = y - previousY;
-	        this.speed = Math.sqrt(dx * dx + dy * dy); // Distance moved in one step
-	        this.hasMoved = true; // We now have two positions to predict from
+	        if (hasMovedTwice) {
+	            double dx = x - previousX;
+	            double dy = y - previousY;
+	            this.speedX = dx; // Vitesse par étape
+	            this.speedY = dy;
+	        } else if (x != previousX || y != previousY) {
+	            hasMovedTwice = true;
+	        }
 	    }
 	    
-	    public double predictX(double bulletTravelTime) {
-	        if (!hasMoved) {
-	            return x; // No movement data yet, use current position
+	    public void predictPosition(double bulletTravelTime) {
+	        if (!hasMovedTwice) {
+	            this.predictedX = x;
+	            this.predictedY = y;
+	        } else {
+	            this.predictedX = x + speedX * bulletTravelTime;
+	            this.predictedY = y + speedY * bulletTravelTime;
 	        }
-	        double actualDirection = Math.atan2(y - previousY, x - previousX);
-	        return x + Math.cos(actualDirection) * speed * bulletTravelTime;
 	    }
 
-	    public double predictY(double bulletTravelTime) {
-	        if (!hasMoved) {
-	            return y; // No movement data yet, use current position
-	        }
-	        double actualDirection = Math.atan2(y - previousY, x - previousX);
-	        return y + Math.sin(actualDirection) * speed * bulletTravelTime;
+	    public double getPredictedX() {
+	        return predictedX;
 	    }
-	    
+
+	    public double getPredictedY() {
+	        return predictedY;
+	    }
 	}
 	
     private List<Ennemy> enemyTargets = new ArrayList<>();
@@ -99,7 +112,7 @@ public class MacDuoMain extends MacDuoBaseBot {
     private static final int WAITING_DURATION = 1000;
     private Ennemy target;
 	private int fireStrike = 0;
-	private static final int MAX_FIRESTRIKE = 20;
+	private static final int MAX_FIRESTRIKE = 50;
     
 	//=========================================CORE=========================================	
 
@@ -153,10 +166,10 @@ public class MacDuoMain extends MacDuoBaseBot {
     	//DEBUG MESSAGE
         boolean debug = true;
         if (debug && whoAmI == MAIN1) {
-        	//sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN2) {
-        	//sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN3) {
         	sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
@@ -192,13 +205,15 @@ public class MacDuoMain extends MacDuoBaseBot {
 				case MOVING:
 					boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
 					if (following) {
-						//System.out.println(" FOLLOWINGGGGGGGGGGGGGGGG " + whoAmI + " team AAA " + isTeamA);
+						System.out.println(" FOLLOWINGGGGGGGGGGGGGGGG " + whoAmI + " team AAA " + isTeamA);
 						if (!isShooterAvoiding) {
+							System.out.println(whoAmI + " isShooterAvoiding " + isShooterAvoiding);
 							reach_rdv_point(rdvX, rdvY);
 							
 						}
 						else {
 							if (!hasReachedTarget(targetX, targetY, true)) {
+								System.out.println(whoAmI + " !hasReachedTarget ");
 					            myMove(true);
 					        } else {
 					            // La cible d'évitement est atteinte
@@ -339,7 +354,7 @@ public class MacDuoMain extends MacDuoBaseBot {
     	double botX = Double.parseDouble(parts[2]);
         double botY = Double.parseDouble(parts[3]);
     	allyPos.put(parts[1], new BotState(botX, botY, true));
-    	sendLogMessage(parts[1] + " position " + botX + " " +  botY);
+    	//sendLogMessage(parts[1] + " position " + botX + " " +  botY);
             if (parts[1].equals("SBOT")) {
                 if (state != State.FIRE) {
                     rdvX = botX;
@@ -350,7 +365,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 				if (state != State.FIRE) {
 					rdvX = botX;
 					rdvY = botY;
-					sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
+					//sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
 				}
 			}
     }
@@ -399,26 +414,53 @@ public class MacDuoMain extends MacDuoBaseBot {
     private void handleFire(Ennemy target) {
         if (target != null) {
             if (avoidingEnnemy) {
-        		if (!isRoughlySameDirection(target.direction, getHeading())) {
-                	turnTo(target.direction);
-                	return;
-        		} 
-        		if (distance(new Position(target.x, target.y), myPos) < 800) {
-        			myMove(false);
-        		} else {
-        			myMove(true);
-        		}
-            	avoidingEnnemy = false;
-                //moveTowardsTarget(target);
-                return; 
+                if (!isRoughlySameDirection(target.direction, getHeading())) {
+                    turnTo(target.direction);
+                    return;
+                }
+                if (distance(new Position(target.x, target.y), myPos) < 800) {
+                    myMove(false);
+                } else {
+                    myMove(true);
+                }
+                avoidingEnnemy = false;
+                return;
             }
-            firePosition(target.x, target.y);
-        }  else {
+
+            // Utiliser la position prédite déjà calculée dans chooseTarget
+            double predictedX = target.getPredictedX();
+            double predictedY = target.getPredictedY();
+            firePosition(predictedX, predictedY);
+        } else {
             state = State.MOVING;
-            sendLogMessage("state moving dans handleFire");
+            //sendLogMessage("state moving dans handleFire");
             fireOrder = false;
         }
     }
+    
+//    private void handleFire(Ennemy target) {
+//        if (target != null) {
+//            if (avoidingEnnemy) {
+//        		if (!isRoughlySameDirection(target.direction, getHeading())) {
+//                	turnTo(target.direction);
+//                	return;
+//        		} 
+//        		if (distance(new Position(target.x, target.y), myPos) < 800) {
+//        			myMove(false);
+//        		} else {
+//        			myMove(true);
+//        		}
+//            	avoidingEnnemy = false;
+//                //moveTowardsTarget(target);
+//                return; 
+//            }
+//            firePosition(target.x, target.y);
+//        }  else {
+//            state = State.MOVING;
+//            sendLogMessage("state moving dans handleFire");
+//            fireOrder = false;
+//        }
+//    }
 	
 	private void firePosition(double x, double y) {
 	    double angle = Math.atan2(y - myPos.getY(), x - myPos.getX());
@@ -427,12 +469,12 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    else {
 	    	fireStrike = 0;
 	    }
-	    if(fireStrike >= MAX_FIRE_STREAK) {
+	    if(fireStrike >= MAX_FIRESTRIKE) {
 	    	enemyTargets.remove(target);
 	    	fireStrike = 0;
 	    }
         avoidingEnnemy = true;
-	    System.out.println("fireINNNNNG " + whoAmI);
+	    //System.out.println("fireINNNNNG " + whoAmI);
 	}
 	
 
@@ -500,39 +542,87 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    return perpendicularDistance < effectiveRadius;
 	}
 	
+	private double calculateBulletTravelTime(double targetX, double targetY) {
+	    double dx = targetX - myPos.getX();
+	    double dy = targetY - myPos.getY();
+	    double distance = Math.sqrt(dx * dx + dy * dy);
+	    double travelTime = distance / Parameters.bulletVelocity; // Temps = Distance / Vélocité
+	    return travelTime;
+	}
+	
+//	private Ennemy chooseTarget() {
+//	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
+//	    for (Ennemy enemy : enemyTargets) {
+//	        boolean obstacleInTheWay = false;
+//	        Position target = new Position(enemy.x, enemy.y);
+//	        
+//	        // Check each ally
+//	        for (BotState ally : allyPos.values()) {
+//	            Position allyCenter = ally.getPosition();
+//	            if (allyCenter.getX() == myPos.getX() && allyCenter.getY() == myPos.getY()) {
+//	                continue; 
+//	            }
+//	            // Use BOT_RADIUS as the ally's size
+//	            if (isObstacleOnMyFire(allyCenter, target, BOT_RADIUS)) {
+//	            	//System.out.println("ally on the wayyyyyyyyyyyyyyy");
+//	            	obstacleInTheWay = true;
+//	                break;
+//	            }
+//	        }
+//	        for (double[] wreck : wreckPositions) {
+//	            Position wreckCenter = new Position(wreck[0], wreck[1]);
+//	            if (isObstacleOnMyFire(wreckCenter, target, BOT_RADIUS)) {
+//	            	//System.out.println("wreeck on the wayyyyyyyyyyyyyyy");
+//	            	obstacleInTheWay = true;
+//	                break;
+//	            }
+//	        }
+//
+//	        if (!obstacleInTheWay) {
+//	            return enemy; // Safe to fire at this enemy
+//	        }
+//	    }
+//	    return null; // No safe target found
+//	}
+	
 	private Ennemy chooseTarget() {
 	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
 	    for (Ennemy enemy : enemyTargets) {
-	        boolean obstacleInTheWay = false;
-	        Position target = new Position(enemy.x, enemy.y);
+	        // Calculer le temps de trajet de la balle jusqu'à la position actuelle
+	        double bulletTravelTime = calculateBulletTravelTime(enemy.x, enemy.y);
 	        
-	        // Check each ally
+	        // Prédire la position future et la stocker dans l'ennemi
+	        enemy.predictPosition(bulletTravelTime);
+	        Position predictedTarget = new Position(enemy.getPredictedX(), enemy.getPredictedY());
+
+	        boolean obstacleInTheWay = false;
+
+	        // Vérifier les alliés
 	        for (BotState ally : allyPos.values()) {
 	            Position allyCenter = ally.getPosition();
 	            if (allyCenter.getX() == myPos.getX() && allyCenter.getY() == myPos.getY()) {
-	                continue; 
+	                continue; // Ignorer soi-même
 	            }
-	            // Use BOT_RADIUS as the ally's size
-	            if (isObstacleOnMyFire(allyCenter, target, BOT_RADIUS)) {
-	            	//System.out.println("ally on the wayyyyyyyyyyyyyyy");
-	            	obstacleInTheWay = true;
+	            if (isObstacleOnMyFire(allyCenter, predictedTarget, BOT_RADIUS)) {
+	                obstacleInTheWay = true;
 	                break;
 	            }
 	        }
+
+	        // Vérifier les épaves
 	        for (double[] wreck : wreckPositions) {
 	            Position wreckCenter = new Position(wreck[0], wreck[1]);
-	            if (isObstacleOnMyFire(wreckCenter, target, BOT_RADIUS)) {
-	            	//System.out.println("wreeck on the wayyyyyyyyyyyyyyy");
-	            	obstacleInTheWay = true;
+	            if (isObstacleOnMyFire(wreckCenter, predictedTarget, BOT_RADIUS)) {
+	                obstacleInTheWay = true;
 	                break;
 	            }
 	        }
 
 	        if (!obstacleInTheWay) {
-	            return enemy; // Safe to fire at this enemy
+	            return enemy; // Retourner l'ennemi avec sa position prédite
 	        }
 	    }
-	    return null; // No safe target found
+	    return null; // Aucune cible valide
 	}
 
 	

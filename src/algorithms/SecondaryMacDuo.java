@@ -111,6 +111,7 @@ abstract class MacDuoBaseBot extends Brain {
 	protected Parameters.Direction turnedDirection;
 	protected double targetX, targetY;
 	protected boolean isShooterAvoiding; 
+	protected double rdvXToReach, rdvYToReach;
 
 	
 	
@@ -144,12 +145,14 @@ abstract class MacDuoBaseBot extends Brain {
 
 		    // Adapter la direction aux angles cardinaux et diagonaux
 		    angleToTarget = getNearestAllowedDirection(angleToTarget);
-	    	//System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
+	    	System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
 
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
+		    	System.out.println(" SEARCHINGGGGG ANGLEEE " + angleToTarget);
 		        turnTo(angleToTarget);
 		    } else {
 		        myMove(true);
+		        System.out.println("followinggg " + whoAmI + " X " + tX + " y " + tY);
 		    }
 
 	    }
@@ -217,10 +220,9 @@ abstract class MacDuoBaseBot extends Brain {
 	protected void turnRight() {
 		if (!isSameDirection(getHeading(),oldAngle+(0.5 * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
-            if (whoAmI == SBOT) System.out.println("turnED RIGHTTTTTT " + whoAmI);
+            //if (whoAmI == SBOT) System.out.println("turnED RIGHTTTTTT " + whoAmI);
 	    } else {
-	    	
-	    	if (whoAmI == SBOT) System.out.println(getHeading()+ " "+ oldAngle+(0.5 * Math.PI));
+	    	//if (whoAmI == SBOT) System.out.println(getHeading()+ " "+ oldAngle+(0.5 * Math.PI));
 	        state = State.MOVING;
 	        myMove(true);
 	    }				
@@ -559,7 +561,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
         }
         
 		if(rdv_point) {
-			System.out.println("REACHING "+ rdvX + " " + rdvY + " " + whoAmI);
+			//System.out.println("REACHING "+ rdvX + " " + rdvY + " " + whoAmI);
 			if (whoAmI == NBOT) {
 				if (!isSameDirection(getHeading(), Parameters.NORTH) && firstTurning) {
 					if (isTeamA) {
@@ -602,18 +604,21 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				return;
 			}
 		}
-			
+	/// TOO DECOMMENTTTTTTTTTTTTTTTT
 		isShooterAround = false;
+		//isShooterAround = true;
 
 		// J'avance si au moins un allié est à moins de 500 de distance
 		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
 			double distance = distance(entry.getValue().getPosition(), myPos);
 
 			if (entry.getValue().isAlive() && distance < 700 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+				//System.out.println(" shooter found ");
 				isShooterAround = true;
 				break;
 			}
 		}
+		//System.out.println("isShooterAround " + isShooterAround);
 		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
