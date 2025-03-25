@@ -134,17 +134,17 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected void reach_rdv_point(double tX, double tY) {
 	    double angleToTarget = Math.atan2(tY - myPos.getY(), tX - myPos.getX());
-	    System.out.println(" ANGLE TO TARGET " + angleToTarget + " BOTTT " + whoAmI + " MY HEADINGGG " + getHeading());
+	    //System.out.println(" ANGLE TO TARGET " + angleToTarget + " BOTTT " + whoAmI + " MY HEADINGGG " + getHeading());
 
-	    // Calculer la distance au scout
+	    // Calculer la distance
 	    double distanceToScout = Math.sqrt(Math.pow(myPos.getX() - tX, 2) + Math.pow(myPos.getY() - tY, 2));
 
 	    // Vérifier si on est dans la portée du scout
-	    if (distanceToScout > 450) {
+	    if (whoAmI==NBOT || whoAmI==SBOT || distanceToScout > 450) {
 
 		    // Adapter la direction aux angles cardinaux et diagonaux
 		    angleToTarget = getNearestAllowedDirection(angleToTarget);
-	    	System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
+	    	//System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
 
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
 		        turnTo(angleToTarget);
@@ -176,6 +176,11 @@ abstract class MacDuoBaseBot extends Brain {
 	protected boolean isSameDirection(double dir1, double dir2) {
 		double diff = Math.abs(normalize(dir1) - normalize(dir2));
 		return diff < ANGLEPRECISION;
+	}
+	
+	protected boolean isRoughlySameDirection(double dir1, double dir2) {
+		double diff = Math.abs(normalize(dir1) - normalize(dir2));
+		return diff < 0.5;
 	}
 	
 	protected double normalize(double dir){
@@ -212,8 +217,10 @@ abstract class MacDuoBaseBot extends Brain {
 	protected void turnRight() {
 		if (!isSameDirection(getHeading(),oldAngle+(0.5 * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
+            if (whoAmI == SBOT) System.out.println("turnED RIGHTTTTTT " + whoAmI);
 	    } else {
-	    	//System.out.println("trying to move right");
+	    	
+	    	if (whoAmI == SBOT) System.out.println(getHeading()+ " "+ oldAngle+(0.5 * Math.PI));
 	        state = State.MOVING;
 	        myMove(true);
 	    }				
@@ -409,7 +416,7 @@ abstract class MacDuoBaseBot extends Brain {
 			if(myPredictedX > 100 && myPredictedX < 2900 && myPredictedY > 100 && myPredictedY < 1900 ) {
 				//System.out.println("pas de mur");
 				move(); 
-				System.out.println("moving forward " + whoAmI + "TEAMMM AAA " + isTeamA);
+				//System.out.println("moving forward " + whoAmI + "TEAMMM AAA " + isTeamA);
 				myPos.setX(myPredictedX);
 				myPos.setY(myPredictedY);
 	    		sendMyPosition();
@@ -486,15 +493,19 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
     private int count;
     
     // points de rdv
-    private static final double TARGET_X1 = 600; // TargetX2 - 300
-    private static final double TARGET_Y1 = 840; // TargetY2 - 660
-    private static final double TARGET_X2 = 900; 
-    private static final double TARGET_Y2 = 1500;
+    //private static final double TARGET_X1 = 600; // TargetX2 - 300
+    //private static final double TARGET_Y1 = 840; // TargetY2 - 660
+    //private static final double TARGET_X2 = 900; 
+    //private static final double TARGET_Y2 = 1500;
     
+    private double rdvX; // TargetX2 - 300
+    private double rdvY; // TargetY2 - 660
+
     private boolean isShooterAround = false;
         
     private boolean obstacleDetected = false;
   
+    private boolean firstTurning = true;
 
     private double avoidanceAngle = Math.PI/2;
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
@@ -523,10 +534,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 	    //INIT
 	    rdv_point=true;
-	    state = State.MOVING;
+	    state = State.FIRST_RDV;
 	    oldAngle = myGetHeading();
-	    targetX = (whoAmI == SBOT) ? TARGET_X2 : TARGET_X1;
-	    targetY = (whoAmI == SBOT) ? TARGET_Y2 : TARGET_Y1;
+
+    	rdvX = (isTeamA) ? 1000 : 1400;
+		rdvY = (whoAmI == SBOT)? 1500 : 500;
+
 	}
 
 	@Override
@@ -534,23 +547,69 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 		//DEBUG MESSAGE
         boolean debug = true;
+
+		detection();
+		readMessages();
+		
         if (debug && whoAmI == NBOT) {
         	sendLogMessage("#NBOT *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == SBOT) {
         	sendLogMessage("#SBOT *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
-		
-		detection();
-		readMessages();
-		
+        
+		if(rdv_point) {
+			System.out.println("REACHING "+ rdvX + " " + rdvY + " " + whoAmI);
+			if (whoAmI == NBOT) {
+				if (!isSameDirection(getHeading(), Parameters.NORTH) && firstTurning) {
+					if (isTeamA) {
+						stepTurn(Parameters.Direction.LEFT);
+					} else stepTurn(Parameters.Direction.RIGHT);
+					return;
+				}
+				if (myPos.getY() > rdvY) {
+					firstTurning = false;
+					myMove(true);
+				} else if ((isTeamA && !isSameDirection(getHeading(), Parameters.EAST)) || (!isTeamA && !isSameDirection(getHeading(), Parameters.WEST))) {
+					if (isTeamA) {
+						stepTurn(Parameters.Direction.RIGHT);
+					} else 	stepTurn(Parameters.Direction.LEFT);
+					return;
+				} else {
+						rdv_point = false;
+						state = State.MOVING;
+					}
+				return;
+			} else {
+				if (!isSameDirection(getHeading(), Parameters.SOUTH) && firstTurning) {
+					if (isTeamA) {
+						stepTurn(Parameters.Direction.RIGHT);
+					} else 	stepTurn(Parameters.Direction.LEFT);
+					return;
+				}
+				if (myPos.getY() < rdvY) {
+					firstTurning = false;
+					myMove(true);
+				} else if ( (isTeamA && !isSameDirection(getHeading(), Parameters.EAST)) || (!isTeamA && !isSameDirection(getHeading(), Parameters.WEST))) {
+					if (isTeamA) {
+						stepTurn(Parameters.Direction.LEFT);
+					} else stepTurn(Parameters.Direction.RIGHT);
+					return;
+				} else {
+						rdv_point = false;
+						state = State.MOVING;
+					}
+				return;
+			}
+		}
+			
 		isShooterAround = false;
 
 		// J'avance si au moins un allié est à moins de 500 de distance
 		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
 			double distance = distance(entry.getValue().getPosition(), myPos);
 
-			if (entry.getValue().isAlive() && distance < 500 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+			if (entry.getValue().isAlive() && distance < 700 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
 				isShooterAround = true;
 				break;
 			}
@@ -564,15 +623,10 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		}
 
 		if (freeze || !isShooterAround) return;
-		
+	
 		
 		try {
 			switch (state) {
-				case FIRST_RDV:
-					if (rdv_point) {
-						//reach_rdv_point(targetX, targetY);
-					}
-					break;
 				case MOVING :				
 					myMove(true);
 					break;

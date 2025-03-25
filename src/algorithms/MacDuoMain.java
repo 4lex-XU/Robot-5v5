@@ -96,7 +96,10 @@ public class MacDuoMain extends MacDuoBaseBot {
     private boolean obstacleInWay = false;
     private double obstacleDirection = 0;
     private int waitingTimer = 0;
-    private static final int WAITING_DURATION = 10;
+    private static final int WAITING_DURATION = 1000;
+    private Ennemy target;
+	private int fireStrike = 0;
+	private static final int MAX_FIRESTRIKE = 20;
     
 	//=========================================CORE=========================================	
 
@@ -161,24 +164,24 @@ public class MacDuoMain extends MacDuoBaseBot {
         
     	detection();
 		readMessages();
-		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
 			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
 			return;
 		}
-		
+        target = chooseTarget();
+        if(target!=null) {
+        	state=State.FIRE;
+        	if (fireStrike == 0) { 
+        		lastTarget = target;
+        	}
+        }
+
 		try {
 			switch (state) {
 				case FIRE:
-					System.out.println(whoAmI + " " + isShooterAvoiding + " TEAMA " + isTeamA);
-			        Ennemy target = chooseTarget();
-			        if (target != null) {
-			        	handleFire(target);
-			        }else {
-			        	initiateObstacleAvoidance();
-			        }
-
+					//System.out.println(whoAmI + " " + isShooterAvoiding + " TEAMA " + isTeamA);
+			        handleFire(target);
 			        break;
 				
 				case FIRST_RDV:
@@ -268,7 +271,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
 	
 				        if (obstacleInPath) {
-				            System.out.println("Obstacle détecté dans la trajectoire circulaire " + whoAmI + " TEAM AAAA " +  isTeamA);
+				            //System.out.println("Obstacle détecté dans la trajectoire circulaire " + whoAmI + " TEAM AAAA " +  isTeamA);
 				            //System.out.println("Obstacle détecté");
 				            obstacleDetected = true;
 				            obstacleDirection = o.getObjectDirection();
@@ -291,11 +294,10 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 	        }
 	    }
-	    
-	    if (enemyDetected && !isShooterAvoiding) {
-	        state = State.FIRE;
+	    	    //if (enemyDetected && !isShooterAvoiding) {
+	       // state = State.FIRE;
 	        //sendLogMessage("state fire dans detection");
-	    } else if (!enemyDetected && state != State.FIRE && !isShooterAvoiding){
+	    if (!enemyDetected && state != State.FIRE && !isShooterAvoiding){
 	        state = State.MOVING;
 	        //sendLogMessage("state moving dans detection");
 	    }
@@ -392,13 +394,20 @@ public class MacDuoMain extends MacDuoBaseBot {
         Types enemyType = parts[3].contains("MainBot") ? Types.OpponentMainBot : Types.OpponentSecondaryBot;
 
         addOrUpdateEnemy(enemyX, enemyY, enemyDistance, enemyDirection, false, enemyType);
-        state = State.FIRE;
     }
     
     private void handleFire(Ennemy target) {
         if (target != null) {
             if (avoidingEnnemy) {
-            	reach_ennemy(target.x, target.y);
+        		if (!isRoughlySameDirection(target.direction, getHeading())) {
+                	turnTo(target.direction);
+                	return;
+        		} 
+        		if (distance(new Position(target.x, target.y), myPos) < 800) {
+        			myMove(false);
+        		} else {
+        			myMove(true);
+        		}
             	avoidingEnnemy = false;
                 //moveTowardsTarget(target);
                 return; 
@@ -414,6 +423,14 @@ public class MacDuoMain extends MacDuoBaseBot {
 	private void firePosition(double x, double y) {
 	    double angle = Math.atan2(y - myPos.getY(), x - myPos.getX());
 	    fire(angle);
+	    if (target.equals(lastTarget)) fireStrike++;
+	    else {
+	    	fireStrike = 0;
+	    }
+	    if(fireStrike >= MAX_FIRE_STREAK) {
+	    	enemyTargets.remove(target);
+	    	fireStrike = 0;
+	    }
         avoidingEnnemy = true;
 	    System.out.println("fireINNNNNG " + whoAmI);
 	}
@@ -497,7 +514,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            }
 	            // Use BOT_RADIUS as the ally's size
 	            if (isObstacleOnMyFire(allyCenter, target, BOT_RADIUS)) {
-	            	System.out.println("ally on the wayyyyyyyyyyyyyyy");
+	            	//System.out.println("ally on the wayyyyyyyyyyyyyyy");
 	            	obstacleInTheWay = true;
 	                break;
 	            }
@@ -505,7 +522,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        for (double[] wreck : wreckPositions) {
 	            Position wreckCenter = new Position(wreck[0], wreck[1]);
 	            if (isObstacleOnMyFire(wreckCenter, target, BOT_RADIUS)) {
-	            	System.out.println("wreeck on the wayyyyyyyyyyyyyyy");
+	            	//System.out.println("wreeck on the wayyyyyyyyyyyyyyy");
 	            	obstacleInTheWay = true;
 	                break;
 	            }
