@@ -109,7 +109,7 @@ public class MacDuoMain extends MacDuoBaseBot {
     private boolean obstacleInWay = false;
     private double obstacleDirection = 0;
     private int waitingTimer = 0;
-    private static final int WAITING_DURATION = 1000;
+    private static final int WAITING_DURATION = 0; //NE PAS OUBLIER CHANGER LA VALEUR A 3000 CONTRE VRAI JOUEURS
     private Ennemy target;
 	private int fireStrike = 0;
 	private static final int MAX_FIRESTRIKE = 50;

@@ -148,7 +148,7 @@ abstract class MacDuoBaseBot extends Brain {
 	    	System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
 
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
-		    	System.out.println(" SEARCHINGGGGG ANGLEEE " + angleToTarget);
+		    	System.out.println(" SEARCHINGGGGG ANGLEEE " + normalize(angleToTarget) + " BOTTT " + whoAmI + " MY HEADINGGG " + myGetHeading());
 		        turnTo(angleToTarget);
 		    } else {
 		        myMove(true);
@@ -168,8 +168,10 @@ abstract class MacDuoBaseBot extends Brain {
 	        diff += 2 * Math.PI; 
 	    }
 	    if (diff > ANGLEPRECISION) {
+			System.out.println("TURNING RIGHTTTTTT " + whoAmI);
 	        stepTurn(Parameters.Direction.RIGHT);
-	    } else if (diff < -ANGLEPRECISION) {
+	    } else {
+			System.out.println("TURNING LEFTTTTTT " + whoAmI);
 	        stepTurn(Parameters.Direction.LEFT);
 	    }
 	}
@@ -178,7 +180,7 @@ abstract class MacDuoBaseBot extends Brain {
 
 	protected boolean isSameDirection(double dir1, double dir2) {
 		double diff = Math.abs(normalize(dir1) - normalize(dir2));
-		return diff < ANGLEPRECISION;
+		return diff < ANGLEPRECISION || Math.abs(diff - 2 * Math.PI) < ANGLEPRECISION;
 	}
 	
 	protected boolean isRoughlySameDirection(double dir1, double dir2) {
@@ -606,6 +608,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		}
 	/// TOO DECOMMENTTTTTTTTTTTTTTTT
 		isShooterAround = false;
+		if ((Parameters.teamAMainBotBrainClassName.contains("CampFire")) || (Parameters.teamBMainBotBrainClassName.contains("CampFire"))) isShooterAround = true;
 		//isShooterAround = true;
 
 		// J'avance si au moins un allié est à moins de 500 de distance
@@ -627,6 +630,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 			return;
 		}
 
+		System.out.println(freeze + " FREEEEZE " + whoAmI + " " + isShooterAround);
 		if (freeze || !isShooterAround) return;
 	
 		
@@ -703,10 +707,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				case OpponentSecondaryBot:
 					// Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
 					//System.out.println(" Deetect ennemy TEAM AAA " + isTeamA);
+					System.out.println(" ENNNNNNNNNNEMMMMMMMMMMMMMMMMMMMMMY" + whoAmI );
 					broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
 					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
-					if (o.getObjectDistance() < BOT_RADIUS*2.5) {
+					if (o.getObjectDistance() < BOT_RADIUS*4) {
 						broadcast("MOVING_BACK " + whoAmI + " " + oX + " " + oY);
+						System.out.println(" FREEEEZINGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" + whoAmI );
 						freeze = true;
 					}
 					break;
