@@ -27,7 +27,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 	    Types type;
 	    double speedX, speedY;
 	    boolean hasMovedTwice;
-	    double predictedX, predictedY; // Ajout pour stocker la prédiction
+	    double predictedX, predictedY;
 
 	    public Ennemy(double x, double y, double distance, double direction, Types type) {
 	        this.x = x;
@@ -43,10 +43,10 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        this.speedX = 0;
 	        this.speedY = 0;
 	        this.hasMovedTwice = false;
-	        this.predictedX = x; // Initialisé à la position actuelle
+	        this.predictedX = x;
 	        this.predictedY = y;
 	    }
-	    
+
 	    public void updatePosition(double newX, double newY, double newDistance, double newDirection) {
 	        this.prevPreviousX = this.previousX;
 	        this.prevPreviousY = this.previousY;
@@ -62,20 +62,37 @@ public class MacDuoMain extends MacDuoBaseBot {
 	        if (hasMovedTwice) {
 	            double dx = x - previousX;
 	            double dy = y - previousY;
-	            this.speedX = dx; // Vitesse par étape
+	            this.speedX = dx; // Vitesse actuelle
 	            this.speedY = dy;
 	        } else if (x != previousX || y != previousY) {
 	            hasMovedTwice = true;
 	        }
 	    }
-	    
+
 	    public void predictPosition(double bulletTravelTime) {
 	        if (!hasMovedTwice) {
 	            this.predictedX = x;
 	            this.predictedY = y;
 	        } else {
-	            this.predictedX = x + speedX * bulletTravelTime;
-	            this.predictedY = y + speedY * bulletTravelTime;
+	            // Calcul de l'accélération ou détection d'oscillation
+	            double prevDx = previousX - prevPreviousX;
+	            double prevDy = previousY - prevPreviousY;
+	            double currentDx = x - previousX;
+	            double currentDy = y - previousY;
+
+	            // Vérifie si le mouvement change de direction (oscillation)
+	            boolean isOscillatingX = (prevDx * currentDx < 0); // Changement de signe en X
+	            boolean isOscillatingY = (prevDy * currentDy < 0); // Changement de signe en Y
+
+	            if (isOscillatingX || isOscillatingY) {
+	                // Si oscillation détectée, limiter la prédiction à une position moyenne ou actuelle
+	                this.predictedX = (x + previousX) / 2; // Position moyenne comme approximation
+	                this.predictedY = (y + previousY) / 2;
+	            } else {
+	                // Mouvement linéaire : extrapolation basée sur la vitesse actuelle
+	                this.predictedX = x + speedX * bulletTravelTime;
+	                this.predictedY = y + speedY * bulletTravelTime;
+	            }
 	        }
 	    }
 
@@ -166,20 +183,20 @@ public class MacDuoMain extends MacDuoBaseBot {
     	//DEBUG MESSAGE
         boolean debug = true;
         if (debug && whoAmI == MAIN1) {
-        	sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	//sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN2) {
-        	sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	//sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN3) {
-        	sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        	//sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         
     	detection();
 		readMessages();
 		if (getHealth() <= 0) {
 			state = State.DEAD;
-			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
+			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false, whoAmI, getHeading()));
 			return;
 		}
         target = chooseTarget();
@@ -205,15 +222,15 @@ public class MacDuoMain extends MacDuoBaseBot {
 				case MOVING:
 					boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
 					if (following) {
-						System.out.println(" FOLLOWINGGGGGGGGGGGGGGGG " + whoAmI + " team AAA " + isTeamA);
+						//System.out.println(" FOLLOWINGGGGGGGGGGGGGGGG " + whoAmI + " team AAA " + isTeamA);
 						if (!isShooterAvoiding) {
-							System.out.println(whoAmI + " isShooterAvoiding " + isShooterAvoiding);
+							//System.out.println(whoAmI + " isShooterAvoiding " + isShooterAvoiding);
 							reach_rdv_point(rdvX, rdvY);
 							
 						}
 						else {
 							if (!hasReachedTarget(targetX, targetY, true)) {
-								System.out.println(whoAmI + " !hasReachedTarget ");
+								//System.out.println(whoAmI + " !hasReachedTarget ");
 					            myMove(true);
 					        } else {
 					            // La cible d'évitement est atteinte
@@ -337,9 +354,8 @@ public class MacDuoMain extends MacDuoBaseBot {
 	            	handlePosMessage(parts);
 	            	break;
 				case "DEAD":
-					allyPos.put(parts[1], new BotState( allyPos.get(parts[1]).getPosition().getX(), 
-														allyPos.get(parts[1]).getPosition().getY(), 
-														false));
+					BotState bot = allyPos.get(parts[1]);
+					 bot.setPosition(allyPos.get(parts[1]).getPosition().getX(), allyPos.get(parts[1]).getPosition().getY(), allyPos.get(parts[1]).getHeading);
 					break;
             }
         }
@@ -353,7 +369,13 @@ public class MacDuoMain extends MacDuoBaseBot {
     private void handlePosMessage(String[] parts) {
     	double botX = Double.parseDouble(parts[2]);
         double botY = Double.parseDouble(parts[3]);
-    	allyPos.put(parts[1], new BotState(botX, botY, true));
+        double heading = Double.parseDouble(parts[4]);
+        BotState bot = allyPos.get(parts[1]);
+    	if (bot == null) {
+    		allyPos.put(parts[1], new BotState(botX, botY, true, parts[1], heading));
+    	}else {
+            bot.setPosition(botX, botY, heading);
+        }
     	//sendLogMessage(parts[1] + " position " + botX + " " +  botY);
             if (parts[1].equals("SBOT")) {
                 if (state != State.FIRE) {
@@ -599,11 +621,25 @@ public class MacDuoMain extends MacDuoBaseBot {
 
 	        // Vérifier les alliés
 	        for (BotState ally : allyPos.values()) {
-	            Position allyCenter = ally.getPosition();
-	            if (allyCenter.getX() == myPos.getX() && allyCenter.getY() == myPos.getY()) {
-	                continue; // Ignorer soi-même
+	            if (ally.getPosition().getX() == myPos.getX() && ally.getPosition().getY() == myPos.getY()) {
+	                continue; 
 	            }
-	            if (isObstacleOnMyFire(allyCenter, predictedTarget, BOT_RADIUS)) {
+	            Position predictedAllyPos = new Position (ally.getPosition().getX(), ally.getPosition().getY());
+	            if (ally.whoAmI == NBOT || ally.whoAmI == SBOT) {
+	            	for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
+	        			double distance = distance(entry.getValue().getPosition(), myPos);
+
+	        			if (entry.getValue().isAlive() && distance < DISTANCE_SCOUT_SHOOTER && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+	        				predictedAllyPos = new Position (ally.getPosition().getX() + Math.cos(getHeading()) * 3, ally.getPosition().getY() + Math.sin(getHeading()) * 3);
+	        				break;
+	        			}
+	        		}
+	            } else {
+    				predictedAllyPos = new Position (ally.getPosition().getX() + Math.cos(getHeading()), ally.getPosition().getY() + Math.sin(getHeading()));
+	            }
+	            
+	            //System.out.println(" ally " + ally.getPosition());
+	            if (isObstacleOnMyFire(predictedAllyPos, predictedTarget, BOT_RADIUS)) {
 	                obstacleInTheWay = true;
 	                break;
 	            }

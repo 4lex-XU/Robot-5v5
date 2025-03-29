@@ -16,18 +16,24 @@ import robotsimulator.Brain;
 class BotState {
 	private Position position = new Position(0, 0);
 	private boolean isAlive = true;
+    String whoAmI;
+    double getHeading;
 
 	public BotState() {}
-	public BotState(double x, double y, boolean alive) {
+	public BotState(double x, double y, boolean alive, String whoAmI, double getHeading) {
 		position.setX(x);
 		position.setY(y);
 		isAlive = alive;
+        this.whoAmI = whoAmI;
+        this.getHeading = getHeading;
 	}
 
-	public void setPosition(double x, double y) {
+	public void setPosition(double x, double y, double getHeading) {
 		position.setX(x);
 		position.setY(y);
+		this.getHeading = getHeading;
 	}
+	
 	public Position getPosition() {return position;}
 	public void setAlive(boolean alive) {isAlive = alive;}
 	public boolean isAlive() {return isAlive;}
@@ -77,8 +83,6 @@ class Segment {
     }
 }
 
-
-
 //====================================================================================
 //====================================ABSTRACT BOT====================================
 //====================================================================================
@@ -96,6 +100,7 @@ abstract class MacDuoBaseBot extends Brain {
 	
 	protected final double BOT_RADIUS = 50;
 	protected final double BULLET_RADIUS = 5;
+	protected final double DISTANCE_SCOUT_SHOOTER = 675;
 
 	protected String whoAmI;
 	
@@ -145,14 +150,14 @@ abstract class MacDuoBaseBot extends Brain {
 
 		    // Adapter la direction aux angles cardinaux et diagonaux
 		    angleToTarget = getNearestAllowedDirection(angleToTarget);
-	    	System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
+	    	//System.out.println("TEAMMMMMMM AAAAAAA "+ isTeamA + " " + whoAmI + " to the angle "+ angleToTarget);
 
 		    if (!isSameDirection(getHeading(), angleToTarget)) {
-		    	System.out.println(" SEARCHINGGGGG ANGLEEE " + normalize(angleToTarget) + " BOTTT " + whoAmI + " MY HEADINGGG " + myGetHeading());
+		    	//System.out.println(" SEARCHINGGGGG ANGLEEE " + normalize(angleToTarget) + " BOTTT " + whoAmI + " MY HEADINGGG " + myGetHeading());
 		        turnTo(angleToTarget);
 		    } else {
 		        myMove(true);
-		        System.out.println("followinggg " + whoAmI + " X " + tX + " y " + tY);
+		        //System.out.println("followinggg " + whoAmI + " X " + tX + " y " + tY);
 		    }
 
 	    }
@@ -168,10 +173,10 @@ abstract class MacDuoBaseBot extends Brain {
 	        diff += 2 * Math.PI; 
 	    }
 	    if (diff > ANGLEPRECISION) {
-			System.out.println("TURNING RIGHTTTTTT " + whoAmI);
+			//System.out.println("TURNING RIGHTTTTTT " + whoAmI);
 	        stepTurn(Parameters.Direction.RIGHT);
 	    } else {
-			System.out.println("TURNING LEFTTTTTT " + whoAmI);
+			//System.out.println("TURNING LEFTTTTTT " + whoAmI);
 	        stepTurn(Parameters.Direction.LEFT);
 	    }
 	}
@@ -204,12 +209,13 @@ abstract class MacDuoBaseBot extends Brain {
 	  }
 	
 	protected void sendMyPosition() {
-		broadcast("POS "+whoAmI+" "+myPos.getX()+" "+myPos.getY());
+		broadcast("POS "+whoAmI+" "+myPos.getX()+" "+myPos.getY()+" "+getHeading());
 	}
 	
 	protected void turnLeft() {
-		
-		if (!isSameDirection(getHeading(),oldAngle+(-0.5 * Math.PI))) {
+		double avoidance = 0.5;
+		//if (whoAmI == NBOT || whoAmI == SBOT) avoidance = 0.25;
+		if (!isSameDirection(getHeading(),oldAngle+(-avoidance * Math.PI))) {
 			//System.out.println("trying to turn left");
 			stepTurn(Parameters.Direction.LEFT);
 	    } else {
@@ -220,7 +226,9 @@ abstract class MacDuoBaseBot extends Brain {
 	}
 	
 	protected void turnRight() {
-		if (!isSameDirection(getHeading(),oldAngle+(0.5 * Math.PI))) {
+		double avoidance = 0.5;
+		//if (whoAmI == NBOT || whoAmI == SBOT) avoidance = 0.25;
+		if (!isSameDirection(getHeading(),oldAngle+(avoidance * Math.PI))) {
             stepTurn(Parameters.Direction.RIGHT);
             //if (whoAmI == SBOT) System.out.println("turnED RIGHTTTTTT " + whoAmI);
 	    } else {
@@ -367,6 +375,8 @@ abstract class MacDuoBaseBot extends Brain {
 		boolean obstacleInPathRight = false;
 		boolean obstacleInPathLeft = false;
 		oldAngle = myGetHeading();
+		double avoidance = 0.5;
+		//if (whoAmI == NBOT || whoAmI == SBOT) avoidance = 0.25;
 
 
 		for (IRadarResult o : detectRadar()) {
@@ -375,12 +385,12 @@ abstract class MacDuoBaseBot extends Brain {
 			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != Types.BULLET) {
 				for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
 					if (!obstacleInPathRight) {
-						obstacleInPathRight = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() + 0.5 * Math.PI), p.getX(), p.getY());
+						obstacleInPathRight = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() + avoidance * Math.PI), p.getX(), p.getY());
 					}
 					if (!obstacleInPathLeft) {
 						if(whoAmI==SBOT)
 							//System.out.println("obstacle in path left "+p.getX()+" "+p.getY()+ " " + o.getObjectType());
-					    obstacleInPathLeft = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() - 0.5 * Math.PI), p.getX(), p.getY());
+					    obstacleInPathLeft = isPointInTrajectory(myPos.getX(), myPos.getY(), (getHeading() - avoidance * Math.PI), p.getX(), p.getY());
 					}
 			    }
 			}
@@ -390,22 +400,22 @@ abstract class MacDuoBaseBot extends Brain {
 		if (!obstacleInPathRight) {
 			//if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning right");
 			state = State.TURNING_RIGHT;
-			targetX = myPos.getX() + Math.cos(getHeading()+0.5*Math.PI) *100;
-			targetY= myPos.getY() + Math.sin(getHeading()+0.5*Math.PI) *100;
+			targetX = myPos.getX() + Math.cos(getHeading()+avoidance*Math.PI) *50;
+			targetY= myPos.getY() + Math.sin(getHeading()+avoidance*Math.PI) *50;
 
 			return;
 		}
 		if (!obstacleInPathLeft) {
 			//if (whoAmI == MAIN1) System.out.println("isShooterAvoiding: "+isShooterAvoiding + " turning left");
 			state = State.TURNING_LEFT;
-			targetX = myPos.getX() + Math.cos(getHeading()-0.5*Math.PI) *100;
-			targetY= myPos.getY() + Math.sin(getHeading()-0.5*Math.PI) *100;
+			targetX = myPos.getX() + Math.cos(getHeading()-avoidance*Math.PI) *50;
+			targetY= myPos.getY() + Math.sin(getHeading()-avoidance*Math.PI) *50;
 			return;
 		}
 		//sendLogMessage("move back");
 		state = State.MOVING_BACK;
-		targetX = myPos.getX() - Math.cos(getHeading()) *100;
-		targetY= myPos.getY() - Math.sin(getHeading()) *100;
+		targetX = myPos.getX() - Math.cos(getHeading()) *50;
+		targetY= myPos.getY() - Math.sin(getHeading()) *50;
 		return;
 	}
 	
@@ -492,7 +502,7 @@ abstract class MacDuoBaseBot extends Brain {
 //====================================SECONDARY====================================
 //=================================================================================
 
-public class SecondaryMacDuo extends MacDuoBaseBot{	
+public class MacDuoSecondary extends MacDuoBaseBot{	
     
     private int count;
     
@@ -515,7 +525,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 150;
     
 	//=========================================CORE=========================================	
-	public SecondaryMacDuo() {super();}
+	public MacDuoSecondary() {super();}
 
 	@Override
 	public void activate() {
@@ -615,7 +625,7 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
 			double distance = distance(entry.getValue().getPosition(), myPos);
 
-			if (entry.getValue().isAlive() && distance < 700 && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+			if (entry.getValue().isAlive() && distance < DISTANCE_SCOUT_SHOOTER && entry.getKey() != NBOT && entry.getKey() != SBOT) {
 				//System.out.println(" shooter found ");
 				isShooterAround = true;
 				break;
@@ -625,12 +635,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 		
 		if (getHealth() <= 0) {
 			state = State.DEAD;
-			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false));
+			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false, whoAmI, getHeading()));
 			broadcast("DEAD " + whoAmI);
 			return;
 		}
 
-		System.out.println(freeze + " FREEEEZE " + whoAmI + " " + isShooterAround);
+		//System.out.println(freeze + " FREEEEZE " + whoAmI + " " + isShooterAround);
 		if (freeze || !isShooterAround) return;
 	
 		
@@ -707,12 +717,12 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 				case OpponentSecondaryBot:
 					// Transmettre la position des ennemis : ENEMY dir dist type enemyX enemyY
 					//System.out.println(" Deetect ennemy TEAM AAA " + isTeamA);
-					System.out.println(" ENNNNNNNNNNEMMMMMMMMMMMMMMMMMMMMMY" + whoAmI );
+					//System.out.println(" ENNNNNNNNNNEMMMMMMMMMMMMMMMMMMMMMY" + whoAmI );
 					broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
 					//sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
 					if (o.getObjectDistance() < BOT_RADIUS*4) {
 						broadcast("MOVING_BACK " + whoAmI + " " + oX + " " + oY);
-						System.out.println(" FREEEEZINGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" + whoAmI );
+						//System.out.println(" FREEEEZINGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG" + whoAmI );
 						freeze = true;
 					}
 					break;
@@ -737,7 +747,8 @@ public class SecondaryMacDuo extends MacDuoBaseBot{
 	            case "POS" :
 	            	double allyX = Double.parseDouble(parts[2]);
 	                double allyY = Double.parseDouble(parts[3]);
-	            	allyPos.put(parts[1], new BotState(allyX, allyY, true));
+	                double heading = Double.parseDouble(parts[4]);
+	            	allyPos.put(parts[1], new BotState(allyX, allyY, true,parts[1], heading));
 	            	break;
             }
         }
