@@ -12,418 +12,278 @@ import characteristics.IRadarResult;
 import characteristics.IRadarResult.Types;
 import characteristics.Parameters;
 
-
-//============================================================================
-//====================================MAIN====================================
-//============================================================================
-
 public class MacDuoMain extends MacDuoBaseBot {
-	
-	private static class Ennemy {
-	    double x, y;
-	    double previousX, previousY;
-	    double prevPreviousX, prevPreviousY;
-	    double distance, direction, previousDirection;
-	    Types type;
-	    double speedX, speedY;
-	    boolean hasMovedTwice;
-	    double predictedX, predictedY;
-
-	    public Ennemy(double x, double y, double distance, double direction, Types type) {
-	        this.x = x;
-	        this.y = y;
-	        this.distance = distance;
-	        this.direction = direction;
-	        this.previousDirection = direction;
-	        this.previousX = x;
-	        this.previousY = y;
-	        this.prevPreviousX = x;
-	        this.prevPreviousY = y;
-	        this.type = type;
-	        this.speedX = 0;
-	        this.speedY = 0;
-	        this.hasMovedTwice = false;
-	        this.predictedX = x;
-	        this.predictedY = y;
-	    }
-
-	    public void updatePosition(double newX, double newY, double newDistance, double newDirection) {
-	        this.prevPreviousX = this.previousX;
-	        this.prevPreviousY = this.previousY;
-	        this.previousX = this.x;
-	        this.previousY = this.y;
-	        this.previousDirection = this.direction;
-
-	        this.x = newX;
-	        this.y = newY;
-	        this.distance = newDistance;
-	        this.direction = newDirection;
-
-	        if (hasMovedTwice) {
-	            double dx = x - previousX;
-	            double dy = y - previousY;
-	            this.speedX = dx; // Vitesse actuelle
-	            this.speedY = dy;
-	        } else if (x != previousX || y != previousY) {
-	            hasMovedTwice = true;
-	        }
-	    }
-
-	    public void predictPosition(double bulletTravelTime) {
-	        if (!hasMovedTwice) {
-	            this.predictedX = x;
-	            this.predictedY = y;
-	        } else {
-	            // Calcul de l'accélération ou détection d'oscillation
-	            double prevDx = previousX - prevPreviousX;
-	            double prevDy = previousY - prevPreviousY;
-	            double currentDx = x - previousX;
-	            double currentDy = y - previousY;
-
-	            // Vérifie si le mouvement change de direction (oscillation)
-	            boolean isOscillatingX = (prevDx * currentDx < 0); // Changement de signe en X
-	            boolean isOscillatingY = (prevDy * currentDy < 0); // Changement de signe en Y
-
-	            if (isOscillatingX || isOscillatingY) {
-	                // Si oscillation détectée, limiter la prédiction à une position moyenne ou actuelle
-	                this.predictedX = (x + previousX) / 2; // Position moyenne comme approximation
-	                this.predictedY = (y + previousY) / 2;
-	            } else {
-	                // Mouvement linéaire : extrapolation basée sur la vitesse actuelle
-	                this.predictedX = x + speedX * bulletTravelTime;
-	                this.predictedY = y + speedY * bulletTravelTime;
-	            }
-	        }
-	    }
-
-	    public double getPredictedX() {
-	        return predictedX;
-	    }
-
-	    public double getPredictedY() {
-	        return predictedY;
-	    }
-	}
-	
-    private List<Ennemy> enemyTargets = new ArrayList<>();
-    private List<double[]> wreckPositions = new ArrayList<>();
-    private List<Ennemy> enemyPosToAvoid = new ArrayList<>();
-	
-	private static final double FIREANGLEPRECISION = 0.3;
+    private static final double FIREANGLEPRECISION = 0.3;
     private static final double OBSTACLE_AVOIDANCE_DISTANCE = 100;
+    private static final double BOT_RADIUS = 50; // Rayon du robot, comme dans BrainCanevas
+    private static final double BULLET_RADIUS = Parameters.bulletRadius; // Rayon de la balle
+    private static final double BOT_BULLET_RADIUS = BOT_RADIUS + BULLET_RADIUS;
+
     private int fireStreak = 0;
-    private static final int MAX_FIRE_STREAK = 10; 
-    private Ennemy lastTarget = null; 
-    
-    //---VARIABLES---//
+    private static final int MAX_FIRE_STREAK = 10;
+    private Ennemy lastTarget = null;
+
+    // Variables existantes
     private double rdvX = 0.0;
-    private double rdvY = 0.0; 
+    private double rdvY = 0.0;
     private boolean fireOrder;
     private Parameters.Direction turnedDirection;
     private boolean avoidingEnnemy = false;
-    
     private boolean obstacleDetected = false;
     private boolean obstacleInWay = false;
     private double obstacleDirection = 0;
     private int waitingTimer = 0;
-    private static final int WAITING_DURATION = 0; //NE PAS OUBLIER CHANGER LA VALEUR A 3000 CONTRE VRAI JOUEURS
+    private static final int WAITING_DURATION = 0; // À changer à 3000 contre vrais joueurs
     private Ennemy target;
-	private int fireStrike = 0;
-	private static final int MAX_FIRESTRIKE = 50;
-    
-	//=========================================CORE=========================================	
+    private int fireStrike = 0;
+    private static final int MAX_FIRESTRIKE = 100;
 
-	public MacDuoMain () { super();}
-    
+    public MacDuoMain() {
+        super();
+    }
+
     @Override
     public void activate() {
-		isTeamA = (getHeading() == Parameters.EAST);
-  
-    	boolean top = false;
-    	boolean bottom = false;
-        for (IRadarResult o: detectRadar())
-            if (isSameDirection(o.getObjectDirection(),Parameters.NORTH)) top = true;
-            else if (isSameDirection(o.getObjectDirection(),Parameters.SOUTH)) bottom = true;
-        
+        isTeamA = (getHeading() == Parameters.EAST);
+
+        boolean top = false;
+        boolean bottom = false;
+        for (IRadarResult o : detectRadar()) {
+            if (isSameDirection(o.getObjectDirection(), Parameters.NORTH)) top = true;
+            else if (isSameDirection(o.getObjectDirection(), Parameters.SOUTH)) bottom = true;
+        }
+
         whoAmI = MAIN3;
         if (top && bottom) whoAmI = MAIN2;
-        else if (!top && bottom) whoAmI = MAIN1; 
-                
-        switch(whoAmI) {
-	        case MAIN1 : 
-	        	myPos = new Position((isTeamA ? Parameters.teamAMainBot1InitX : Parameters.teamBMainBot1InitX), 
-				        			 (isTeamA ? Parameters.teamAMainBot1InitY : Parameters.teamBMainBot1InitY));
-//	            rdvX = isTeamA ? 300 : 2500;
-//	            rdvY = 1100;
-                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
+        else if (!top && bottom) whoAmI = MAIN1;
+
+        switch (whoAmI) {
+            case MAIN1:
+                myPos = new Position((isTeamA ? Parameters.teamAMainBot1InitX : Parameters.teamBMainBot1InitX),
+                        (isTeamA ? Parameters.teamAMainBot1InitY : Parameters.teamBMainBot1InitY));
                 break;
-	        case MAIN2 : 
-	        	myPos = new Position((isTeamA ? Parameters.teamAMainBot2InitX : Parameters.teamBMainBot2InitX),
-	        						 (isTeamA ? Parameters.teamAMainBot2InitY : Parameters.teamBMainBot2InitY));
-//	            rdvX = isTeamA ? 450 : 2400;
-//	            rdvY = 1350;
-                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
-	            break;
-	        case MAIN3 : 
-	        	myPos = new Position((isTeamA ? Parameters.teamAMainBot3InitX : Parameters.teamBMainBot3InitX),
-	        						 (isTeamA ? Parameters.teamAMainBot3InitY : Parameters.teamBMainBot3InitY));
-//	            rdvX = isTeamA ? 600 : 2300;
-//	            rdvY = 1700;
-                //sendLogMessage("targetX and targetY : " + rdvX + ", " + rdvY);
-	            break;
+            case MAIN2:
+                myPos = new Position((isTeamA ? Parameters.teamAMainBot2InitX : Parameters.teamBMainBot2InitX),
+                        (isTeamA ? Parameters.teamAMainBot2InitY : Parameters.teamBMainBot2InitY));
+                break;
+            case MAIN3:
+                myPos = new Position((isTeamA ? Parameters.teamAMainBot3InitX : Parameters.teamBMainBot3InitX),
+                        (isTeamA ? Parameters.teamAMainBot3InitY : Parameters.teamBMainBot3InitY));
+                break;
         }
-	    state = State.FIRST_RDV;
-//	    rdv_point = true;
-	    oldAngle = myGetHeading();
-	    
+        state = State.FIRST_RDV;
+        oldAngle = myGetHeading();
     }
-    
+
     @Override
     public void step() {
-    	//DEBUG MESSAGE
+        // Debug messages
         boolean debug = true;
-        if (debug && whoAmI == MAIN1) {
-        	//sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+        
+
+        detection();
+        readMessages();
+        if (getHealth() <= 0) {
+            state = State.DEAD;
+            allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false, whoAmI, getHeading()));
+            return;
+        }
+
+        target = chooseTarget();
+        if (target != null) {
+            state = State.FIRE;
+            if (fireStrike == 0) {
+                lastTarget = target;
+            }
+        }
+
+		if (debug && whoAmI == MAIN1) {
+            sendLogMessage("#MAIN1 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN2) {
-        	//sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
+            sendLogMessage("#MAIN2 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
         if (debug && whoAmI == MAIN3) {
-        	//sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
-        }
-        
-    	detection();
-		readMessages();
-		if (getHealth() <= 0) {
-			state = State.DEAD;
-			allyPos.put(whoAmI, new BotState(myPos.getX(), myPos.getY(), false, whoAmI, getHeading()));
-			return;
-		}
-        target = chooseTarget();
-        if(target!=null) {
-        	state=State.FIRE;
-        	if (fireStrike == 0) { 
-        		lastTarget = target;
-        	}
+            sendLogMessage("#MAIN3 *thinks* (x,y)= ("+(int)myPos.getX()+", "+(int)myPos.getY()+") theta= "+(int)(myGetHeading()*180/(double)Math.PI)+"°. #State= "+state);
         }
 
-		try {
-			switch (state) {
-				case FIRE:
-					//System.out.println(whoAmI + " " + isShooterAvoiding + " TEAMA " + isTeamA);
-			        handleFire(target);
-			        break;
-				
-				case FIRST_RDV:
-					if (rdvX != 0.0 && rdvY != 0.0 ) {
-						reach_rdv_point(rdvX, rdvY);
-					}
-					break;
-				case MOVING:
-					boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
-					if (following) {
-						//System.out.println(" FOLLOWINGGGGGGGGGGGGGGGG " + whoAmI + " team AAA " + isTeamA);
-						if (!isShooterAvoiding) {
-							//System.out.println(whoAmI + " isShooterAvoiding " + isShooterAvoiding);
-							reach_rdv_point(rdvX, rdvY);
-							
-						}
-						else {
-							if (!hasReachedTarget(targetX, targetY, true)) {
-								//System.out.println(whoAmI + " !hasReachedTarget ");
-					            myMove(true);
-					        } else {
-					            // La cible d'évitement est atteinte
-					            isShooterAvoiding = false;
-					        }
-						}
-					} else {
-						//System.out.println("  NOTTTTTTT FOLLOWINGG " + whoAmI + " team AAA " + isTeamA);
-						if (waitingTimer < WAITING_DURATION) {
-							waitingTimer ++;
-							return;
-						}
-						//waitingTimer = 0;
-						myMove(true);
-					}
-				    break;
-
-				case MOVING_BACK:
-				    // Ici, on recule jusqu'à atteindre la cible calculée pour le recul
-				    if (!hasReachedTarget(targetX, targetY, false)) {
-				        myMove(false);
-				    } else {
-				        // Une fois la cible atteinte, on peut par exemple relancer l'évitement ou passer à un autre état
-				        initiateObstacleAvoidance();
-				    }
-				    break;
-				case TURNING_LEFT:
-					turnLeft();
-					break;
-				case TURNING_RIGHT:
-					turnRight();	
-					break;	
-				default:
-					break;	
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+        try {
+            switch (state) {
+                case FIRE:
+                    handleFire(target);
+                    break;
+                case FIRST_RDV:
+                    if (rdvX != 0.0 && rdvY != 0.0) {
+                        reach_rdv_point(rdvX, rdvY);
+                    }
+                    break;
+                case MOVING:
+                    boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
+					System.out.println(allyPos.get(SBOT).isAlive()+" "+allyPos.get(NBOT).isAlive()+" "+whoAmI);
+                    if (following) {
+                        if (!isShooterAvoiding) {
+                            reach_rdv_point(rdvX, rdvY);
+                        } else {
+                            if (!hasReachedTarget(targetX, targetY, true)) {
+                                myMove(true);
+                            } else {
+                                isShooterAvoiding = false;
+                            }
+                        }
+                    } else {
+						System.out.println("j'essaie de bouger "+ whoAmI);
+                        myMove(true);
+                    }
+                    break;
+                case MOVING_BACK:
+                    if (!hasReachedTarget(targetX, targetY, false)) {
+                        myMove(false);
+                    } else {
+                        initiateObstacleAvoidance();
+                    }
+                    break;
+                case TURNING_LEFT:
+                    turnLeft();
+                    break;
+                case TURNING_RIGHT:
+                    turnRight();
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-    
-	//=========================================ADDED=========================================	
 
+    // Méthodes existantes inchangées
     protected void detection() {
-		fireOrder = false;
-	    obstacleDetected = false;
+        fireOrder = false;
+        obstacleDetected = false;
         boolean enemyDetected = false;
 
         for (IRadarResult o : detectRadar()) {
-			double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
-			double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
-			if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
-				
-				if (state == State.MOVING_BACK) {
-					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
-						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
-	
-				        if (obstacleInPath) {
-				            //sendLogMessage("Obstacle détecté dans la trajectoire circulaire !");
-				            //System.out.println("Obstacle détecté");
-				            obstacleDetected = true;
-				            obstacleDirection = o.getObjectDirection();
-				            initiateObstacleAvoidance();
-				        } 
-				    }
-				} 
-				else {
-					for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
-				        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
-						//System.out.println(whoAmI + " " + myPos.getX()+ " " + myPos.getY() + " || "+ p.getX() + " " + p.getY());
-	
-				        if (obstacleInPath) {
-				            //System.out.println("Obstacle détecté dans la trajectoire circulaire " + whoAmI + " TEAM AAAA " +  isTeamA);
-				            //System.out.println("Obstacle détecté");
-				            obstacleDetected = true;
-				            obstacleDirection = o.getObjectDirection();
-				            initiateObstacleAvoidance();
-				        } 
-				    }
-				}
-			}		    
-	    	if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
-	            broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
-	            addOrUpdateEnemy(oX, oY, o.getObjectDistance(), o.getObjectDirection(), true, o.getObjectType());
-	            if (!enemyDetected) {
-	            	fireOrder = true;
+            double oX = myPos.getX() + o.getObjectDistance() * Math.cos(o.getObjectDirection());
+            double oY = myPos.getY() + o.getObjectDistance() * Math.sin(o.getObjectDirection());
+            if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
+                if (state == State.MOVING_BACK) {
+                    for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+                        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
+                        if (obstacleInPath) {
+                            obstacleDetected = true;
+                            obstacleDirection = o.getObjectDirection();
+                            initiateObstacleAvoidance();
+                        }
+                    }
+                } else {
+                    for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+                        boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
+                        if (obstacleInPath) {
+                            obstacleDetected = true;
+                            obstacleDirection = o.getObjectDirection();
+                            initiateObstacleAvoidance();
+                        }
+                    }
+                }
+            }
+            if (o.getObjectType() == IRadarResult.Types.OpponentMainBot || o.getObjectType() == IRadarResult.Types.OpponentSecondaryBot) {
+                broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
+                addOrUpdateEnemy(oX, oY, o.getObjectDistance(), o.getObjectDirection(), true, o.getObjectType());
+                if (!enemyDetected) {
+                    fireOrder = true;
                     enemyDetected = true;
                 }
-	        }
-	    	if (o.getObjectType() == IRadarResult.Types.Wreck) {
-	            broadcast("WRECK " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
-	            handleWreckMessage(new String[]{"WRECK", "", "", "", String.valueOf(oX), String.valueOf(oY)});
-	            //sendLogMessage("ENEMY " + o.getObjectType() + " " + enemyX + " " + enemyY);
-	        }
-	    }
-	    	    //if (enemyDetected && !isShooterAvoiding) {
-	       // state = State.FIRE;
-	        //sendLogMessage("state fire dans detection");
-	    if (!enemyDetected && state != State.FIRE && !isShooterAvoiding){
-	        state = State.MOVING;
-	        //sendLogMessage("state moving dans detection");
-	    }
-	}
-    
+            }
+            if (o.getObjectType() == IRadarResult.Types.Wreck) {
+                broadcast("WRECK " + oX + " " + oY);
+                handleWreckMessage(new String[]{"WRECK", String.valueOf(oX), String.valueOf(oY)});
+            }
+        }
+        if (!enemyDetected && state != State.FIRE && !isShooterAvoiding) {
+            state = State.MOVING;
+        }
+    }
+
     private void readMessages() {
-    	//sendLogMessage("readMessages");
         ArrayList<String> messages = fetchAllMessages();
-		ArrayList<String> ennemyMessages = new ArrayList();
+        ArrayList<String> ennemyMessages = new ArrayList();
 
         for (String msg : messages) {
             String[] parts = msg.split(" ");
             switch (parts[0]) {
-            	case "ENEMY":
-            		//sendLogMessage("ENEMY handleEnemyMessage");
-					ennemyMessages.add(msg);
-	                break;
-                case "WRECK" :
-                	handleWreckMessage(parts);
-                	break;
-	            case "POS":
-	            	handlePosMessage(parts);
-	            	break;
-				case "DEAD":
-					BotState bot = allyPos.get(parts[1]);
-					 bot.setPosition(allyPos.get(parts[1]).getPosition().getX(), allyPos.get(parts[1]).getPosition().getY(), allyPos.get(parts[1]).getHeading);
-					break;
+                case "ENEMY":
+                    ennemyMessages.add(msg);
+                    break;
+                case "WRECK":
+                    handleWreckMessage(parts);
+                    break;
+                case "POS":
+                    handlePosMessage(parts);
+                    break;
+                case "DEAD":
+                    BotState bot = allyPos.get(parts[1]);
+					bot.setAlive(false);
+                    break;
             }
         }
 
-		for (String msg : ennemyMessages) {
-			String[] parts = msg.split(" ");
-			handleEnemyMessage(parts);
-		}
+        for (String msg : ennemyMessages) {
+            String[] parts = msg.split(" ");
+            handleEnemyMessage(parts);
+        }
     }
 
     private void handlePosMessage(String[] parts) {
-    	double botX = Double.parseDouble(parts[2]);
+        double botX = Double.parseDouble(parts[2]);
         double botY = Double.parseDouble(parts[3]);
         double heading = Double.parseDouble(parts[4]);
         BotState bot = allyPos.get(parts[1]);
-    	if (bot == null) {
-    		allyPos.put(parts[1], new BotState(botX, botY, true, parts[1], heading));
-    	}else {
+        if (bot == null) {
+            allyPos.put(parts[1], new BotState(botX, botY, true, parts[1], heading));
+        } else {
             bot.setPosition(botX, botY, heading);
         }
-    	//sendLogMessage(parts[1] + " position " + botX + " " +  botY);
-            if (parts[1].equals("SBOT")) {
-                if (state != State.FIRE) {
-                    rdvX = botX;
-                    rdvY = botY;
-                    //sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
-                }
-            } else if (!allyPos.get(SBOT).isAlive() && parts[1].equals("NBOT")) {
-				if (state != State.FIRE) {
-					rdvX = botX;
-					rdvY = botY;
-					//sendLogMessage(whoAmI + " following scout " + parts[1] + " to " + rdvX + ", " + rdvY);
-				}
-			}
+        if (parts[1].equals("SBOT")) {
+            if (state != State.FIRE) {
+                rdvX = botX;
+                rdvY = botY;
+            }
+        } else if (!allyPos.get(SBOT).isAlive() && parts[1].equals("NBOT")) {
+            if (state != State.FIRE) {
+                rdvX = botX;
+                rdvY = botY;
+            }
+        }
     }
-    
-    
-    private void handleWreckMessage(String[] parts) {
-	    double wreckX = Double.parseDouble(parts[4]);
-	    double wreckY = Double.parseDouble(parts[5]);
 
-	    boolean exists = false;
-	    for (double[] wreck : wreckPositions) {
-	        if (Math.abs(wreck[0] - wreckX) < 20 && Math.abs(wreck[1] - wreckY) < 20) {
-	            exists = true;
-	            break;
-	        }
-	    }
-	    if (!exists) {
-	        wreckPositions.add(new double[]{wreckX, wreckY});
-	        //sendLogMessage("New wreck detected at (" + (int) wreckX + ", " + (int) wreckY + ")");
-	    }
-	    
-	    Ennemy detectedEnemyWreck = null;
-	    for (Ennemy enemy : enemyTargets) {
-	    	if (Math.abs(enemy.x - wreckX) < 50 && Math.abs(enemy.y - wreckY) < 50) {
-	    		detectedEnemyWreck = enemy;
-	    		break;
-	    	}
-	    	
-	    }
-	    enemyTargets.remove(detectedEnemyWreck);
-	    enemyPosToAvoid.add(detectedEnemyWreck);    
-	}
-    
+    private void handleWreckMessage(String[] parts) {
+        double wreckX = Double.parseDouble(parts[1]);
+        double wreckY = Double.parseDouble(parts[2]);
+
+        boolean exists = false;
+        for (double[] wreck : wreckPositions) {
+            if (Math.abs(wreck[0] - wreckX) < 20 && Math.abs(wreck[1] - wreckY) < 20) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            wreckPositions.add(new double[]{wreckX, wreckY});
+        }
+
+        Ennemy detectedEnemyWreck = null;
+        for (Ennemy enemy : enemyTargets) {
+            if (Math.abs(enemy.x - wreckX) < 50 && Math.abs(enemy.y - wreckY) < 50) {
+                detectedEnemyWreck = enemy;
+                break;
+            }
+        }
+        enemyTargets.remove(detectedEnemyWreck);
+        enemyPosToAvoid.add(detectedEnemyWreck != null ? detectedEnemyWreck : new Ennemy(wreckX, wreckY, 0, 0, Types.OpponentSecondaryBot));
+    }
+
     private void handleEnemyMessage(String[] parts) {
-    	//sendLogMessage("handleEnemyMessage");
-    	fireOrder = true;
+        fireOrder = true;
         double enemyX = Double.parseDouble(parts[4]);
         double enemyY = Double.parseDouble(parts[5]);
         double enemyDistance = Double.parseDouble(parts[2]);
@@ -432,263 +292,227 @@ public class MacDuoMain extends MacDuoBaseBot {
 
         addOrUpdateEnemy(enemyX, enemyY, enemyDistance, enemyDirection, false, enemyType);
     }
-    
+
+    // Nouvelle logique de visée intégrée depuis BrainCanevas
     private void handleFire(Ennemy target) {
         if (target != null) {
             if (avoidingEnnemy) {
                 if (!isRoughlySameDirection(target.direction, getHeading())) {
                     turnTo(target.direction);
+					avoidingEnnemy = false;
                     return;
                 }
-                if (distance(new Position(target.x, target.y), myPos) < 800) {
+                if (distance(new Position(target.x, target.y), myPos) < 980) {
+                    for (IRadarResult o : detectRadar()) {
+                        if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
+                            for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+                                boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
+                                if (obstacleInPath) {
+                                    initiateObstacleAvoidance();
+                					avoidingEnnemy = false;
+                                    return;
+                                }
+                            }
+                            
+                        }
+                    }
                     myMove(false);
                 } else {
+                    for (IRadarResult o : detectRadar()) {
+                        if (allyPos.get(whoAmI).isAlive() && o.getObjectType() != IRadarResult.Types.BULLET) {
+                           for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
+                                boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
+                                if (obstacleInPath) {
+                                    initiateObstacleAvoidance();
+                					avoidingEnnemy = false;
+                                    return;
+                                }
+                               }
+                            }
+                        }
                     myMove(true);
                 }
                 avoidingEnnemy = false;
                 return;
             }
 
-            // Utiliser la position prédite déjà calculée dans chooseTarget
-            double predictedX = target.getPredictedX();
-            double predictedY = target.getPredictedY();
-            firePosition(predictedX, predictedY);
+            // Utiliser la logique de BrainCanevas pour viser précisément
+            double firingAngle = tryFindAngle(myPos, target);
+            if (firingAngle != Double.NaN) {
+                fire(firingAngle);
+                if (target.equals(lastTarget)) fireStrike++;
+                else fireStrike = 0;
+                if (fireStrike >= MAX_FIRESTRIKE) {
+                    enemyTargets.remove(target);
+                    fireStrike = 0;
+                }
+                avoidingEnnemy = true;
+            } else {
+                state = State.MOVING; // Pas de tir possible, retour à MOVING
+            }
         } else {
             state = State.MOVING;
-            //sendLogMessage("state moving dans handleFire");
             fireOrder = false;
         }
     }
-    
-//    private void handleFire(Ennemy target) {
-//        if (target != null) {
-//            if (avoidingEnnemy) {
-//        		if (!isRoughlySameDirection(target.direction, getHeading())) {
-//                	turnTo(target.direction);
-//                	return;
-//        		} 
-//        		if (distance(new Position(target.x, target.y), myPos) < 800) {
-//        			myMove(false);
-//        		} else {
-//        			myMove(true);
-//        		}
-//            	avoidingEnnemy = false;
-//                //moveTowardsTarget(target);
-//                return; 
-//            }
-//            firePosition(target.x, target.y);
-//        }  else {
-//            state = State.MOVING;
-//            sendLogMessage("state moving dans handleFire");
-//            fireOrder = false;
-//        }
-//    }
-	
-	private void firePosition(double x, double y) {
-	    double angle = Math.atan2(y - myPos.getY(), x - myPos.getX());
-	    fire(angle);
-	    if (target.equals(lastTarget)) fireStrike++;
-	    else {
-	    	fireStrike = 0;
-	    }
-	    if(fireStrike >= MAX_FIRESTRIKE) {
-	    	enemyTargets.remove(target);
-	    	fireStrike = 0;
-	    }
-        avoidingEnnemy = true;
-	    //System.out.println("fireINNNNNG " + whoAmI);
-	}
-	
 
-	private void addOrUpdateEnemy(double x, double y, double distance, double direction, boolean isMyDetection, Types type) {
-	    if (!isMyDetection) {
-	        double dx = x - myPos.getX();
-	        double dy = y - myPos.getY();
-	        distance = Math.sqrt(dx * dx + dy * dy); 
-	        direction = Math.atan2(dy, dx);
-	    }
+    private double tryFindAngle(Position from, Ennemy to) {
+        double distance = distance(new Position(to.x, to.y), from);
+        double time = distance / Parameters.bulletVelocity;
 
-	    // Vérifier si cet ennemi est déjà dans la liste et le mettre à jour
-	    for (Ennemy enemy : enemyTargets) {
-	        if (Math.abs(enemy.x - x) < 50 && Math.abs(enemy.y - y) < 50) {
-	        	//sendLogMessage("ennemy updated");
-	        	enemy.updatePosition(x, y, distance, direction);
-	            return;
-	        }
-	    }
-	    //sendLogMessage("ennemy added");
-	    enemyTargets.add(new Ennemy(x, y, distance, direction, type));
-	    
-	}
-	private boolean isObstacleOnMyFire(Position obstacleCenter, Position target, double obstacleRadius) {
-	    double startX = myPos.getX();
-	    double startY = myPos.getY();
-	    double endX = target.getX();
-	    double endY = target.getY();
-	    double allyX = obstacleCenter.getX();
-	    double allyY = obstacleCenter.getY();
+        to.predictPosition(time);
+        double futureX = to.getPredictedX();
+        double futureY = to.getPredictedY();
+        Position futureCoords = new Position(futureX, futureY);
 
-	    // Vector from shooter to target
-	    double deltaX = endX - startX;
-	    double deltaY = endY - startY;
-	    double lineLength = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        double centerAngle = Math.atan2(futureY - from.getY(), futureX - from.getX());
+        double vectorNorm = distance(new Position(futureX, futureY), from);
 
-	    // If shooter and target are the same point, no firing line exists
-	    if (lineLength == 0) {
-	        return false;
-	    }
+        double maxDeviation = Math.atan((BOT_BULLET_RADIUS - 1) / Math.max(vectorNorm, 1.0));
 
-	    // Normalized direction vector
-	    double dirX = deltaX / lineLength;
-	    double dirY = deltaY / lineLength;
+        double[] angles = {centerAngle, centerAngle - maxDeviation, centerAngle + maxDeviation};
+        for (double angle : angles) {
+            Position firingEnd = new Position(
+                from.getX() + Math.cos(angle) * Parameters.bulletRange,
+                from.getY() + Math.sin(angle) * Parameters.bulletRange
+            );
+            if (isFiringLineSafe(from, firingEnd)) {
+                return angle;
+            }
+        }
+        return Double.NaN; 
+    }
 
-	    // Vector from shooter to ally
-	    double vecX = allyX - startX;
-	    double vecY = allyY - startY;
+    private boolean isFiringLineSafe(Position start, Position end) {
+        for (BotState ally : allyPos.values()) {
+            if (ally.getPosition().getX() == myPos.getX() && ally.getPosition().getY() == myPos.getY()) {
+                continue;
+            }
+            if (isObstacleOnMyFire(ally.getPosition(), end, BOT_RADIUS)) {
+                return false;
+            }
+        }
+        for (double[] wreck : wreckPositions) {
+            Position wreckCenter = new Position(wreck[0], wreck[1]);
+            if (isObstacleOnMyFire(wreckCenter, end, BOT_RADIUS)) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-	    // Projection of ally onto the firing line
-	    double projection = vecX * dirX + vecY * dirY;
+    private void addOrUpdateEnemy(double x, double y, double distance, double direction, boolean isMyDetection, Types type) {
+        if (!isMyDetection) {
+            double dx = x - myPos.getX();
+            double dy = y - myPos.getY();
+            distance = Math.sqrt(dx * dx + dy * dy);
+            direction = Math.atan2(dy, dx);
+        }
 
-	    // If ally is behind shooter or beyond target, it’s not in the way
-	    if (projection < 0 || projection > lineLength) {
-	        return false;
-	    }
+        for (Ennemy enemy : enemyTargets) {
+            if (Math.abs(enemy.x - x) < 50 && Math.abs(enemy.y - y) < 50) {
+                enemy.updatePosition(x, y, distance, direction);
+                return;
+            }
+        }
+        enemyTargets.add(new Ennemy(x, y, distance, direction, type));
+    }
 
-	    // Perpendicular distance from ally to the firing line (cross product magnitude)
-	    double perpendicularDistance = Math.abs(vecX * dirY - vecY * dirX);
+    private boolean isObstacleOnMyFire(Position obstacleCenter, Position target, double obstacleRadius) {
+        double startX = myPos.getX();
+        double startY = myPos.getY();
+        double endX = target.getX();
+        double endY = target.getY();
+        double allyX = obstacleCenter.getX();
+        double allyY = obstacleCenter.getY();
 
-	    // Effective radius includes bullet size and ally size
-	    double effectiveRadius = obstacleRadius + Parameters.bulletRadius;
+        double deltaX = endX - startX;
+        double deltaY = endY - startY;
+        double lineLengthSquared = deltaX * deltaX + deltaY * deltaY;
+        double lineLength = Math.sqrt(lineLengthSquared);
 
-	    // If ally is too close to the firing line, it’s an obstacle
-	    return perpendicularDistance < effectiveRadius;
-	}
-	
-	private double calculateBulletTravelTime(double targetX, double targetY) {
-	    double dx = targetX - myPos.getX();
-	    double dy = targetY - myPos.getY();
-	    double distance = Math.sqrt(dx * dx + dy * dy);
-	    double travelTime = distance / Parameters.bulletVelocity; // Temps = Distance / Vélocité
-	    return travelTime;
-	}
-	
-//	private Ennemy chooseTarget() {
-//	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
-//	    for (Ennemy enemy : enemyTargets) {
-//	        boolean obstacleInTheWay = false;
-//	        Position target = new Position(enemy.x, enemy.y);
-//	        
-//	        // Check each ally
-//	        for (BotState ally : allyPos.values()) {
-//	            Position allyCenter = ally.getPosition();
-//	            if (allyCenter.getX() == myPos.getX() && allyCenter.getY() == myPos.getY()) {
-//	                continue; 
-//	            }
-//	            // Use BOT_RADIUS as the ally's size
-//	            if (isObstacleOnMyFire(allyCenter, target, BOT_RADIUS)) {
-//	            	//System.out.println("ally on the wayyyyyyyyyyyyyyy");
-//	            	obstacleInTheWay = true;
-//	                break;
-//	            }
-//	        }
-//	        for (double[] wreck : wreckPositions) {
-//	            Position wreckCenter = new Position(wreck[0], wreck[1]);
-//	            if (isObstacleOnMyFire(wreckCenter, target, BOT_RADIUS)) {
-//	            	//System.out.println("wreeck on the wayyyyyyyyyyyyyyy");
-//	            	obstacleInTheWay = true;
-//	                break;
-//	            }
-//	        }
-//
-//	        if (!obstacleInTheWay) {
-//	            return enemy; // Safe to fire at this enemy
-//	        }
-//	    }
-//	    return null; // No safe target found
-//	}
-	
-	private Ennemy chooseTarget() {
-	    Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
-	    for (Ennemy enemy : enemyTargets) {
-	        // Calculer le temps de trajet de la balle jusqu'à la position actuelle
-	        double bulletTravelTime = calculateBulletTravelTime(enemy.x, enemy.y);
-	        
-	        // Prédire la position future et la stocker dans l'ennemi
-	        enemy.predictPosition(bulletTravelTime);
-	        Position predictedTarget = new Position(enemy.getPredictedX(), enemy.getPredictedY());
+        double EPSILON = 1e-6;
+        if (lineLength < EPSILON) {
+            return false;
+        }
 
-	        boolean obstacleInTheWay = false;
+        double dirX = deltaX / lineLength;
+        double dirY = deltaY / lineLength;
 
-	        // Vérifier les alliés
-	        for (BotState ally : allyPos.values()) {
-	            if (ally.getPosition().getX() == myPos.getX() && ally.getPosition().getY() == myPos.getY()) {
-	                continue; 
-	            }
-	            Position predictedAllyPos = new Position (ally.getPosition().getX(), ally.getPosition().getY());
-	            if (ally.whoAmI == NBOT || ally.whoAmI == SBOT) {
-	            	for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
-	        			double distance = distance(entry.getValue().getPosition(), myPos);
+        double vecX = allyX - startX;
+        double vecY = allyY - startY;
 
-	        			if (entry.getValue().isAlive() && distance < DISTANCE_SCOUT_SHOOTER && entry.getKey() != NBOT && entry.getKey() != SBOT) {
-	        				predictedAllyPos = new Position (ally.getPosition().getX() + Math.cos(getHeading()) * 3, ally.getPosition().getY() + Math.sin(getHeading()) * 3);
-	        				break;
-	        			}
-	        		}
-	            } else {
-    				predictedAllyPos = new Position (ally.getPosition().getX() + Math.cos(getHeading()), ally.getPosition().getY() + Math.sin(getHeading()));
-	            }
-	            
-	            //System.out.println(" ally " + ally.getPosition());
-	            if (isObstacleOnMyFire(predictedAllyPos, predictedTarget, BOT_RADIUS)) {
-	                obstacleInTheWay = true;
-	                break;
-	            }
-	        }
+        double projection = vecX * dirX + vecY * dirY;
 
-	        // Vérifier les épaves
-	        for (double[] wreck : wreckPositions) {
-	            Position wreckCenter = new Position(wreck[0], wreck[1]);
-	            if (isObstacleOnMyFire(wreckCenter, predictedTarget, BOT_RADIUS)) {
-	                obstacleInTheWay = true;
-	                break;
-	            }
-	        }
+        if (projection < -EPSILON || projection > lineLength + EPSILON) {
+            return false;
+        }
 
-	        if (!obstacleInTheWay) {
-	            return enemy; // Retourner l'ennemi avec sa position prédite
-	        }
-	    }
-	    return null; // Aucune cible valide
-	}
+        double perpendicularDistance = Math.abs(vecX * dirY - vecY * dirX);
 
-	
-	private void reach_ennemy(double tX, double tY) {
-	    double angleToTarget = Math.atan2(tY - myPos.getY(), tX - myPos.getX());
+        double effectiveRadius = obstacleRadius + Parameters.bulletRadius + EPSILON;
 
-	    // Calculer la distance à l'ennemi
-	    double distanceToScout = Math.sqrt(Math.pow(myPos.getX() - tX, 2) + Math.pow(myPos.getY() - tY, 2));
+        if (perpendicularDistance < effectiveRadius) {
+            double distanceToStart = Math.sqrt(vecX * vecX + vecY * vecY);
+            double distanceToEnd = Math.sqrt((allyX - endX) * (allyX - endX) + (allyY - endY) * (allyY - endY));
+            if (distanceToStart < obstacleRadius || distanceToEnd < obstacleRadius) {
+                return true;
+            }
+            return true;
+        }
+        return false;
+    }
 
+    private double calculateBulletTravelTime(double targetX, double targetY) {
+        double dx = targetX - myPos.getX();
+        double dy = targetY - myPos.getY();
+        double distance = Math.sqrt(dx * dx + dy * dy);
+        return distance / Parameters.bulletVelocity;
+    }
 
-	    if (distanceToScout > 950) {
-	        // Trop loin : s'approcher de l'ennemi
-	        angleToTarget = getNearestAllowedDirection(angleToTarget);
+    private Ennemy chooseTarget() {
+        Collections.sort(enemyTargets, (e1, e2) -> Double.compare(e1.distance, e2.distance));
+        for (Ennemy enemy : enemyTargets) {
+            double bulletTravelTime = calculateBulletTravelTime(enemy.x, enemy.y);
+            enemy.predictPosition(bulletTravelTime);
+            Position predictedTarget = new Position(enemy.getPredictedX(), enemy.getPredictedY());
 
-	        if (!isSameDirection(getHeading(), angleToTarget)) {
-	            turnTo(angleToTarget);
-	        } else {
-	            myMove(true); // Avancer vers l'ennemi
-	        }
-	    } else {
-	        // Trop près : reculer de l'ennemi
-	        double angleToMoveBack = angleToTarget + Math.PI; // Inverser la direction (180°)
-	        angleToMoveBack = getNearestAllowedDirection(angleToMoveBack);
+            boolean obstacleInTheWay = false;
 
-	        if (!isSameDirection(getHeading(), angleToMoveBack)) {
-	            turnTo(angleToMoveBack);
-	        } else {
-	            myMove(false); // Reculer
-	        }
-	    }
-	}
-	
+            for (BotState ally : allyPos.values()) {
+                if (ally.getPosition().getX() == myPos.getX() && ally.getPosition().getY() == myPos.getY()) {
+                    continue;
+                }
+                Position predictedAllyPos = new Position(ally.getPosition().getX(), ally.getPosition().getY());
+                if (ally.whoAmI == NBOT || ally.whoAmI == SBOT) {
+                    for (Map.Entry<String, BotState> entry : allyPos.entrySet()) {
+                        double distance = distance(entry.getValue().getPosition(), myPos);
+                        if (entry.getValue().isAlive() && distance < DISTANCE_SCOUT_SHOOTER && entry.getKey() != NBOT && entry.getKey() != SBOT) {
+                            predictedAllyPos = new Position(ally.getPosition().getX() + Math.cos(getHeading()) * 3, ally.getPosition().getY() + Math.sin(getHeading()) * 3);
+                            break;
+                        }
+                    }
+                } else {
+                    predictedAllyPos = new Position(ally.getPosition().getX() + Math.cos(getHeading()), ally.getPosition().getY() + Math.sin(getHeading()));
+                }
+                if (isObstacleOnMyFire(predictedAllyPos, predictedTarget, BOT_RADIUS)) {
+                    obstacleInTheWay = true;
+                    break;
+                }
+            }
+
+            /*for (double[] wreck : wreckPositions) {
+                Position wreckCenter = new Position(wreck[0], wreck[1]);
+                if (isObstacleOnMyFire(wreckCenter, predictedTarget, BOT_RADIUS)) {
+                    obstacleInTheWay = true;
+                    break;
+                }
+            }*/
+
+            if (!obstacleInTheWay) {
+                return enemy;
+            }
+        }
+        return null;
+    }
 }
