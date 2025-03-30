@@ -2,38 +2,23 @@ package algorithms;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-import algorithms.MacDuoBaseBot.State;
-import characteristics.IFrontSensorResult;
 import characteristics.IRadarResult;
 import characteristics.IRadarResult.Types;
 import characteristics.Parameters;
 
 public class MacDuoMain extends MacDuoBaseBot {
-    private static final double FIREANGLEPRECISION = 0.3;
-    private static final double OBSTACLE_AVOIDANCE_DISTANCE = 100;
     private static final double BOT_RADIUS = 50; // Rayon du robot, comme dans BrainCanevas
     private static final double BULLET_RADIUS = Parameters.bulletRadius; // Rayon de la balle
     private static final double BOT_BULLET_RADIUS = BOT_RADIUS + BULLET_RADIUS;
 
-    private int fireStreak = 0;
-    private static final int MAX_FIRE_STREAK = 10;
     private Ennemy lastTarget = null;
 
     // Variables existantes
     private double rdvX = 0.0;
     private double rdvY = 0.0;
-    private boolean fireOrder;
-    private Parameters.Direction turnedDirection;
     private boolean avoidingEnnemy = false;
-    private boolean obstacleDetected = false;
-    private boolean obstacleInWay = false;
-    private double obstacleDirection = 0;
-    private int waitingTimer = 0;
-    private static final int WAITING_DURATION = 0; // À changer à 3000 contre vrais joueurs
     private Ennemy target;
     private int fireStrike = 0;
     private static final int MAX_FIRESTRIKE = 100;
@@ -119,7 +104,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                     break;
                 case MOVING:
                     boolean following = (allyPos.get(SBOT).isAlive() || allyPos.get(NBOT).isAlive());
-					System.out.println(allyPos.get(SBOT).isAlive()+" "+allyPos.get(NBOT).isAlive()+" "+whoAmI);
                     if (following) {
                         if (!isShooterAvoiding) {
                             reach_rdv_point(rdvX, rdvY);
@@ -131,7 +115,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                             }
                         }
                     } else {
-						System.out.println("j'essaie de bouger "+ whoAmI);
                         myMove(true);
                     }
                     break;
@@ -158,8 +141,6 @@ public class MacDuoMain extends MacDuoBaseBot {
 
     // Méthodes existantes inchangées
     protected void detection() {
-        fireOrder = false;
-        obstacleDetected = false;
         boolean enemyDetected = false;
 
         for (IRadarResult o : detectRadar()) {
@@ -170,7 +151,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                     for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
                         boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), normalize(getHeading() + Math.PI), p.getX(), p.getY());
                         if (obstacleInPath) {
-                            obstacleDetected = true;
                             obstacleDirection = o.getObjectDirection();
                             initiateObstacleAvoidance();
                         }
@@ -179,7 +159,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                     for (Position p : getObstacleCorners(o, myPos.getX(), myPos.getY())) {
                         boolean obstacleInPath = isPointInTrajectory(myPos.getX(), myPos.getY(), getHeading(), p.getX(), p.getY());
                         if (obstacleInPath) {
-                            obstacleDetected = true;
                             obstacleDirection = o.getObjectDirection();
                             initiateObstacleAvoidance();
                         }
@@ -190,7 +169,6 @@ public class MacDuoMain extends MacDuoBaseBot {
                 broadcast("ENEMY " + o.getObjectDirection() + " " + o.getObjectDistance() + " " + o.getObjectType() + " " + oX + " " + oY);
                 addOrUpdateEnemy(oX, oY, o.getObjectDistance(), o.getObjectDirection(), true, o.getObjectType());
                 if (!enemyDetected) {
-                    fireOrder = true;
                     enemyDetected = true;
                 }
             }
@@ -206,7 +184,7 @@ public class MacDuoMain extends MacDuoBaseBot {
 
     private void readMessages() {
         ArrayList<String> messages = fetchAllMessages();
-        ArrayList<String> ennemyMessages = new ArrayList();
+        ArrayList<String> ennemyMessages = new ArrayList<String>();
 
         for (String msg : messages) {
             String[] parts = msg.split(" ");
@@ -283,7 +261,6 @@ public class MacDuoMain extends MacDuoBaseBot {
     }
 
     private void handleEnemyMessage(String[] parts) {
-        fireOrder = true;
         double enemyX = Double.parseDouble(parts[4]);
         double enemyY = Double.parseDouble(parts[5]);
         double enemyDistance = Double.parseDouble(parts[2]);
@@ -352,7 +329,6 @@ public class MacDuoMain extends MacDuoBaseBot {
             }
         } else {
             state = State.MOVING;
-            fireOrder = false;
         }
     }
 
@@ -363,7 +339,7 @@ public class MacDuoMain extends MacDuoBaseBot {
         to.predictPosition(time);
         double futureX = to.getPredictedX();
         double futureY = to.getPredictedY();
-        Position futureCoords = new Position(futureX, futureY);
+        new Position(futureX, futureY);
 
         double centerAngle = Math.atan2(futureY - from.getY(), futureX - from.getX());
         double vectorNorm = distance(new Position(futureX, futureY), from);
@@ -376,14 +352,14 @@ public class MacDuoMain extends MacDuoBaseBot {
                 from.getX() + Math.cos(angle) * Parameters.bulletRange,
                 from.getY() + Math.sin(angle) * Parameters.bulletRange
             );
-            if (isFiringLineSafe(from, firingEnd)) {
+            if (isFiringLineSafe(firingEnd)) {
                 return angle;
             }
         }
         return Double.NaN; 
     }
 
-    private boolean isFiringLineSafe(Position start, Position end) {
+    private boolean isFiringLineSafe(Position end) {
         for (BotState ally : allyPos.values()) {
             if (ally.getPosition().getX() == myPos.getX() && ally.getPosition().getY() == myPos.getY()) {
                 continue;
